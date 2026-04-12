@@ -2,9 +2,9 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QPushButton, QSystemTrayIcon,
-    QMenu, QApplication, QMessageBox,
+    QMenu, QApplication, QMessageBox, QComboBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon, QColor, QPixmap, QPainter, QAction, QFont, QCursor
 
 BAR_STYLE = """
@@ -29,12 +29,6 @@ QLabel#app_name {
 QLabel#status_label {
     font-size: 13px;
     color: #a6adc8;
-}
-
-QLabel#user_label {
-    font-size: 12px;
-    color: #94e2d5;
-    font-weight: 500;
 }
 
 QPushButton#mic_btn {
@@ -70,6 +64,46 @@ QPushButton#small_btn:hover {
     border-color: #89b4fa;
     color: #cdd6f4;
 }
+
+QComboBox#profile_combo {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: #94e2d5;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 80px;
+}
+
+QComboBox#profile_combo:hover {
+    border-color: #89b4fa;
+}
+
+QComboBox#profile_combo QAbstractItemView {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    color: #cdd6f4;
+    selection-background-color: #89b4fa;
+    selection-color: #1e1e2e;
+}
+
+QComboBox#mic_combo {
+    background-color: transparent;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 2px 6px;
+    color: #a6adc8;
+    font-size: 10px;
+    max-width: 120px;
+}
+
+QComboBox#mic_combo QAbstractItemView {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    color: #cdd6f4;
+    selection-background-color: #89b4fa;
+}
 """
 
 
@@ -81,13 +115,11 @@ def create_mic_icon(recording: bool = False) -> QIcon:
     p = QPainter(pixmap)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    # Fond
     bg_color = QColor("#f38ba8") if recording else QColor("#a6e3a1")
     p.setBrush(bg_color)
     p.setPen(Qt.PenStyle.NoPen)
     p.drawEllipse(0, 0, size, size)
 
-    # Micro (symbole simplifie)
     p.setBrush(QColor("#1e1e2e"))
     p.drawRoundedRect(14, 6, 12, 18, 6, 6)
     p.drawRect(18, 24, 4, 4)
@@ -120,10 +152,10 @@ class FloatingBar(QWidget):
     Barre flottante en haut de l'ecran.
 
     Contient:
-    - Nom de l'app + profil utilisateur
-    - Gros bouton micro (cliquer pour parler)
-    - Texte de statut
-    - Boutons discrets: dictionnaire, parametres
+    - Selecteur de profil (Liam / Papa / ...)
+    - Gros bouton micro
+    - Selecteur de micro
+    - Boutons: mots appris, sync, parametres
     """
 
     # Signaux
@@ -132,10 +164,15 @@ class FloatingBar(QWidget):
     settings_clicked = pyqtSignal()
     quit_clicked = pyqtSignal()
     sync_clicked = pyqtSignal()
+    profile_changed = pyqtSignal(str)     # nom du profil
+    mic_changed = pyqtSignal(object)      # device index (int ou None)
 
-    def __init__(self, user_name: str = "", parent=None):
+    def __init__(self, user_name: str = "", profiles: list[str] = None,
+                 mic_devices: list[dict] = None, parent=None):
         super().__init__(parent)
         self.user_name = user_name
+        self.profiles = profiles or []
+        self.mic_devices = mic_devices or []
         self._recording = False
         self._setup_ui()
         self._setup_tray()
@@ -150,27 +187,27 @@ class FloatingBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setStyleSheet(BAR_STYLE)
 
-        # Taille et position
         screen = QApplication.primaryScreen().geometry()
-        bar_width = min(700, screen.width() - 100)
+        bar_width = min(800, screen.width() - 100)
         bar_height = 56
         x = (screen.width() - bar_width) // 2
         self.setGeometry(x, 0, bar_width, bar_height)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 6, 16, 6)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         # Nom de l'app
         app_label = QLabel("VoixClaire")
         app_label.setObjectName("app_name")
         layout.addWidget(app_label)
 
-        # Profil
-        if self.user_name:
-            user_label = QLabel(f"  {self.user_name}")
-            user_label.setObjectName("user_label")
-            layout.addWidget(user_label)
+        # Selecteur de profil
+        self.profile_combo = QComboBox()
+        self.profile_combo.setObjectName("profile_combo")
+        self._populate_profiles()
+        self.profile_combo.currentTextChanged.connect(self._on_profile_changed)
+        layout.addWidget(self.profile_combo)
 
         layout.addStretch()
 
@@ -190,6 +227,14 @@ class FloatingBar(QWidget):
 
         layout.addStretch()
 
+        # Selecteur de micro (petit)
+        self.mic_combo = QComboBox()
+        self.mic_combo.setObjectName("mic_combo")
+        self.mic_combo.setToolTip("Choisir le microphone")
+        self._populate_mics()
+        self.mic_combo.currentIndexChanged.connect(self._on_mic_changed)
+        layout.addWidget(self.mic_combo)
+
         # Boutons discrets
         btn_dict = QPushButton("Mots appris")
         btn_dict.setObjectName("small_btn")
@@ -206,6 +251,50 @@ class FloatingBar(QWidget):
         btn_settings.setToolTip("Parametres")
         btn_settings.clicked.connect(self.settings_clicked.emit)
         layout.addWidget(btn_settings)
+
+    def _populate_profiles(self):
+        """Remplit le selecteur de profils."""
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        for p in self.profiles:
+            # Afficher le nom avec majuscule
+            display = p.replace('_', ' ').title()
+            self.profile_combo.addItem(display, p)
+        # Selectionner le profil actuel
+        for i in range(self.profile_combo.count()):
+            if self.profile_combo.itemData(i) == self.user_name.lower().replace(' ', '_'):
+                self.profile_combo.setCurrentIndex(i)
+                break
+        self.profile_combo.blockSignals(False)
+
+    def _populate_mics(self):
+        """Remplit le selecteur de microphones."""
+        self.mic_combo.blockSignals(True)
+        self.mic_combo.clear()
+        self.mic_combo.addItem("Micro par defaut", None)
+        for dev in self.mic_devices:
+            # Raccourcir le nom si trop long
+            name = dev["name"]
+            if len(name) > 25:
+                name = name[:22] + "..."
+            self.mic_combo.addItem(name, dev["index"])
+        self.mic_combo.blockSignals(False)
+
+    def update_profiles(self, profiles: list[str], current: str = ""):
+        """Met a jour la liste des profils."""
+        self.profiles = profiles
+        if current:
+            self.user_name = current
+        self._populate_profiles()
+
+    def _on_profile_changed(self, text):
+        profile_id = self.profile_combo.currentData()
+        if profile_id:
+            self.profile_changed.emit(profile_id)
+
+    def _on_mic_changed(self, index):
+        device_index = self.mic_combo.currentData()
+        self.mic_changed.emit(device_index)
 
     def _setup_tray(self):
         """Icone dans la barre des taches Windows."""
@@ -284,7 +373,6 @@ class FloatingBar(QWidget):
                 self.raise_()
 
     def mousePressEvent(self, event):
-        """Permet de deplacer la barre en la faisant glisser."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
