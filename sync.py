@@ -1,4 +1,10 @@
-"""Synchronisation des corrections par profil utilisateur via GitHub."""
+"""Synchronisation des corrections par profil utilisateur via GitHub.
+
+Fonctionne en mode "offline-first":
+- Les corrections sont TOUJOURS stockees localement (cle USB ou PC)
+- Quand internet est dispo, on synchronise avec GitHub
+- Si pas internet, tout continue de marcher normalement
+"""
 
 import json
 import subprocess
@@ -6,29 +12,35 @@ import shutil
 import re
 from pathlib import Path
 from datetime import datetime
-from config import DATA_DIR
+from config import DATA_DIR, IS_PORTABLE
 from database import CorrectionDB, get_connection
 
 
-SYNC_DIR = DATA_DIR / "sync_repo"
 CORRECTIONS_FILE = "corrections.json"
 PHRASES_FILE = "phrase_corrections.json"
 
 
 def _sanitize_name(name: str) -> str:
     """Convertit un prenom en nom de dossier safe."""
-    # Minuscules, remplacer espaces et accents
     name = name.strip().lower()
     name = re.sub(r'[^a-z0-9_-]', '_', name)
-    name = re.sub(r'_+', '_', name).strip('_')
-    return name or "default"
+    return re.sub(r'_+', '_', name).strip('_') or "default"
+
+
+def _get_sync_dir() -> Path:
+    """Repertoire du clone git pour la sync."""
+    if IS_PORTABLE:
+        # Sur la cle USB, a cote de data/
+        return DATA_DIR.parent / "sync_repo"
+    else:
+        return DATA_DIR / "sync_repo"
 
 
 class GitHubSync:
     """
-    Synchronise les corrections vers un depot GitHub avec un dossier par profil.
+    Synchronise les corrections vers GitHub, un dossier par profil.
 
-    Structure du depot:
+    Structure du depot GitHub:
         corrections/
             liam/
                 corrections.json
@@ -37,8 +49,11 @@ class GitHubSync:
                 corrections.json
                 phrase_corrections.json
 
-    Chaque poste pull les corrections de son profil, les fusionne
-    avec sa base locale, et push le resultat.
+    Fonctionnement offline-first:
+    1. Les corrections sont toujours en local (BDD SQLite sur la cle)
+    2. sync() essaie de pull/push GitHub
+    3. Si pas internet → echec silencieux, tout marche quand meme
+    4. Au prochain sync reussi, tout est rattrape
     """
 
     def __init__(self, repo_url: str, db: CorrectionDB, user_name: str):
@@ -46,6 +61,7 @@ class GitHubSync:
         self.db = db
         self.user_name = user_name
         self.profile_dir_name = _sanitize_name(user_name)
+        self.sync_dir = _get_sync_dir()
         self._git = shutil.which("git")
 
     @property
@@ -54,24 +70,33 @@ class GitHubSync:
 
     @property
     def is_cloned(self) -> bool:
-        return (SYNC_DIR / ".git").exists()
+        return (self.sync_dir / ".git").exists()
 
-    def _run_git(self, *args, cwd=None, check=True) -> subprocess.CompletedProcess:
+    def _run_git(self, *args, check=True) -> subprocess.CompletedProcess:
         cmd = [self._git] + list(args)
         return subprocess.run(
             cmd,
-            cwd=str(cwd or SYNC_DIR),
+            cwd=str(self.sync_dir),
             capture_output=True,
             text=True,
             check=check,
-            timeout=30,
+            timeout=15,  # timeout court pour ne pas bloquer si pas internet
         )
 
+    def _has_internet(self) -> bool:
+        """Verifie rapidement si GitHub est accessible."""
+        try:
+            import urllib.request
+            urllib.request.urlopen("https://github.com", timeout=3)
+            return True
+        except Exception:
+            return False
+
     def list_profiles(self) -> list[str]:
-        """Liste les profils existants sur le depot."""
+        """Liste les profils sur le depot GitHub."""
         if not self.is_cloned:
             return []
-        corrections_dir = SYNC_DIR / "corrections"
+        corrections_dir = self.sync_dir / "corrections"
         if not corrections_dir.exists():
             return []
         return [d.name for d in corrections_dir.iterdir() if d.is_dir()]
@@ -79,7 +104,7 @@ class GitHubSync:
     def setup(self) -> str:
         """Clone ou met a jour le depot."""
         if not self._git:
-            return "Erreur: git n'est pas installe."
+            return "Erreur: git absent"
 
         if self.is_cloned:
             try:
@@ -88,11 +113,11 @@ class GitHubSync:
             except Exception:
                 return "Erreur pull"
         else:
-            SYNC_DIR.mkdir(parents=True, exist_ok=True)
+            self.sync_dir.mkdir(parents=True, exist_ok=True)
             try:
                 subprocess.run(
-                    [self._git, "clone", self.repo_url, str(SYNC_DIR)],
-                    capture_output=True, text=True, check=True, timeout=60,
+                    [self._git, "clone", self.repo_url, str(self.sync_dir)],
+                    capture_output=True, text=True, check=True, timeout=30,
                 )
                 return "OK"
             except subprocess.CalledProcessError:
@@ -101,8 +126,11 @@ class GitHubSync:
                     self._run_git("init")
                     self._run_git("remote", "add", "origin", self.repo_url, check=False)
                     self._run_git("branch", "-M", "main")
+                    # Configurer git dans le repo de sync
+                    self._run_git("config", "user.name", "VoixClaire")
+                    self._run_git("config", "user.email", "voixclaire@sync")
                     # Premier commit
-                    profile_dir = SYNC_DIR / "corrections" / self.profile_dir_name
+                    profile_dir = self.sync_dir / "corrections" / self.profile_dir_name
                     profile_dir.mkdir(parents=True, exist_ok=True)
                     self._export_to_files()
                     self._run_git("add", ".")
@@ -114,53 +142,62 @@ class GitHubSync:
 
     def sync(self) -> str:
         """
-        Synchronise les corrections:
-        1. Pull depuis GitHub
-        2. Importe les corrections du profil
-        3. Exporte les corrections locales
-        4. Push vers GitHub
+        Synchronise avec GitHub (offline-first).
+
+        Retourne un message de statut.
+        Ne leve jamais d'exception - en cas d'echec, les corrections
+        locales continuent de fonctionner.
         """
         if not self.is_configured:
-            return "Non configure"
+            return "offline"
 
-        # Setup / pull
-        result = self.setup()
-        if "Erreur" in result:
-            return result
+        if not self._has_internet():
+            return "offline"
 
-        # Creer le dossier du profil
-        profile_dir = SYNC_DIR / "corrections" / self.profile_dir_name
-        profile_dir.mkdir(parents=True, exist_ok=True)
-
-        # Importer
-        self._import_from_files()
-
-        # Exporter
-        self._export_to_files()
-
-        # Commit + push
         try:
-            self._run_git("add", ".")
-            status = self._run_git("status", "--porcelain")
+            # Pull
+            result = self.setup()
+            if "Erreur" in result and "pull" not in result:
+                return result
+
+            # S'assurer que git est configure dans le repo
+            self._run_git("config", "user.name", "VoixClaire", check=False)
+            self._run_git("config", "user.email", "voixclaire@sync", check=False)
+
+            # Creer le dossier profil
+            profile_dir = self.sync_dir / "corrections" / self.profile_dir_name
+            profile_dir.mkdir(parents=True, exist_ok=True)
+
+            # Importer les corrections du depot vers la BDD locale
+            imported = self._import_from_files()
+
+            # Exporter la BDD locale vers les fichiers
+            self._export_to_files()
+
+            # Commit + push
+            self._run_git("add", ".", check=False)
+            status = self._run_git("status", "--porcelain", check=False)
             if status.stdout.strip():
                 hostname = self._get_hostname()
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 self._run_git(
                     "commit", "-m",
-                    f"Sync {self.user_name} depuis {hostname} - {ts}"
+                    f"Sync {self.user_name} depuis {hostname} - {ts}",
+                    check=False,
                 )
                 self._run_git("push", "origin", "main", check=False)
-        except subprocess.CalledProcessError:
-            pass
 
-        return "OK"
+            return f"OK ({imported} importees)"
+
+        except Exception as e:
+            # En cas d'erreur, on continue en mode offline
+            return f"offline ({e})"
 
     def _export_to_files(self):
         """Exporte les corrections locales vers les fichiers du profil."""
-        profile_dir = SYNC_DIR / "corrections" / self.profile_dir_name
+        profile_dir = self.sync_dir / "corrections" / self.profile_dir_name
         profile_dir.mkdir(parents=True, exist_ok=True)
 
-        # Corrections mot-a-mot
         corrections = self.db.get_all_corrections()
         corr_data = [
             {
@@ -174,7 +211,6 @@ class GitHubSync:
         with open(profile_dir / CORRECTIONS_FILE, "w", encoding="utf-8") as f:
             json.dump(corr_data, f, indent=2, ensure_ascii=False)
 
-        # Corrections de phrases
         conn = get_connection()
         phrases = conn.execute(
             "SELECT wrong_phrase, correct_phrase, count FROM phrase_corrections"
@@ -184,11 +220,11 @@ class GitHubSync:
         with open(profile_dir / PHRASES_FILE, "w", encoding="utf-8") as f:
             json.dump(phrase_data, f, indent=2, ensure_ascii=False)
 
-    def _import_from_files(self):
-        """Importe les corrections du profil depuis les fichiers GitHub."""
-        profile_dir = SYNC_DIR / "corrections" / self.profile_dir_name
+    def _import_from_files(self) -> int:
+        """Importe les corrections du depot vers la BDD locale."""
+        imported = 0
+        profile_dir = self.sync_dir / "corrections" / self.profile_dir_name
 
-        # Corrections mot-a-mot
         corr_file = profile_dir / CORRECTIONS_FILE
         if corr_file.exists():
             with open(corr_file, "r", encoding="utf-8") as f:
@@ -204,10 +240,10 @@ class GitHubSync:
                         updated_at = datetime('now','localtime')
                 """, (c["wrong_text"], c["correct_text"],
                       c.get("count", 1), c.get("confidence", 1.0)))
+                imported += 1
             conn.commit()
             conn.close()
 
-        # Corrections de phrases
         phrase_file = profile_dir / PHRASES_FILE
         if phrase_file.exists():
             with open(phrase_file, "r", encoding="utf-8") as f:
@@ -222,10 +258,12 @@ class GitHubSync:
                         count = MAX(count, excluded.count),
                         updated_at = datetime('now','localtime')
                 """, (p["wrong_phrase"], p["correct_phrase"], p.get("count", 1)))
+                imported += 1
             conn.commit()
             conn.close()
 
         self.db._load_cache()
+        return imported
 
     @staticmethod
     def _get_hostname() -> str:

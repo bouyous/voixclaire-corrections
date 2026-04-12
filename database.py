@@ -5,11 +5,11 @@ import json
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from config import DB_PATH
+import config
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(config.DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

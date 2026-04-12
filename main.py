@@ -13,9 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
-from config import load_config, save_config, APP_NAME, GITHUB_REPO
-from sync import GitHubSync, _sanitize_name
-from database import CorrectionDB
+from config import (
+    load_config, save_config, set_user_profile,
+    list_local_profiles, APP_NAME, GITHUB_REPO, IS_PORTABLE,
+)
 
 
 def main():
@@ -28,31 +29,50 @@ def main():
     app.setOrganizationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
 
-    config = load_config()
+    # Chercher un profil existant
+    local_profiles = list_local_profiles()
 
-    # Premier lancement ? Demander le prenom
-    user_name = config.get("user_name", "").strip()
-    if not user_name:
-        # Essayer de lister les profils existants sur GitHub
-        existing_profiles = []
+    # Essayer de charger le dernier profil utilise
+    # (on regarde s'il y a un config.json a la racine data/)
+    last_user = ""
+    config = load_config()
+    last_user = config.get("user_name", "").strip()
+
+    if last_user:
+        # On a un profil sauvegarde, l'utiliser
+        set_user_profile(last_user)
+    else:
+        # Premier lancement: demander le prenom
+        # Aussi recuperer les profils GitHub si possible
+        existing = list(local_profiles)
         try:
-            db = CorrectionDB()
-            sync = GitHubSync(GITHUB_REPO, db, "temp")
-            sync.setup()
-            existing_profiles = sync.list_profiles()
+            from database import CorrectionDB
+            from sync import GitHubSync
+            db_temp = CorrectionDB()
+            sync_temp = GitHubSync(GITHUB_REPO, db_temp, "temp")
+            sync_temp.setup()
+            remote_profiles = sync_temp.list_profiles()
+            for p in remote_profiles:
+                if p not in existing:
+                    existing.append(p)
         except Exception:
             pass
 
         from ui.first_run import FirstRunDialog
-        dialog = FirstRunDialog(existing_profiles)
+        dialog = FirstRunDialog(existing)
         if dialog.exec():
-            user_name = dialog.user_name
+            last_user = dialog.user_name
+            set_user_profile(last_user)
+            # Sauvegarder le profil choisi
+            cfg = load_config()
+            cfg["user_name"] = last_user
+            save_config(cfg)
         else:
             sys.exit(0)
 
     # Lancer le controleur principal
     from ui.main_window import AppController
-    controller = AppController(user_name)
+    controller = AppController(last_user)
     controller.start()
 
     sys.exit(app.exec())

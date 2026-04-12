@@ -77,6 +77,9 @@ copy "%~dp0text_injector.py" "%OUT_DIR%\app\" >nul
 copy "%~dp0sync.py" "%OUT_DIR%\app\" >nul
 copy "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
 
+:: Creer le dossier data (corrections sur la cle USB)
+mkdir "%OUT_DIR%\data"
+
 :: ===== 5. Creer le lanceur =====
 echo   [6/6] Creation du lanceur...
 
