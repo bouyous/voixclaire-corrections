@@ -26,24 +26,28 @@ def _detect_data_dir() -> Path:
 
     Mode portable (cle USB):
         VoixClaire_Portable/
-            VoixClaire.bat
-            python/
-            app/
-            data/          <- ICI (sur la cle)
-                liam/
-                    voixclaire.db
-                    config.json
+            VoixClaire.lnk       <- seul fichier visible
+            _engine/             <- cache
+                python/
+                app/
+                data/
+                    liam/
+                        voixclaire.db
 
     Mode installe:
         %APPDATA%/VoixClaire/
     """
     app_root = _find_app_root()
 
-    # Mode portable: on cherche le dossier "python" a cote ou au-dessus
-    portable_root = app_root.parent  # remonte de app/ vers VoixClaire_Portable/
+    # Mode portable: chercher _engine/python ou python a cote/au-dessus
+    portable_root = app_root.parent  # remonte de app/ vers _engine/
+    engine_root = portable_root.parent  # remonte de _engine/ vers VoixClaire_Portable/
+
     if (portable_root / "python").exists():
-        # On est en mode portable
+        # Structure _engine/app/ et _engine/python/
         data_dir = portable_root / "data"
+    elif (engine_root / "python").exists():
+        data_dir = engine_root / "data"
     elif (app_root / "python").exists():
         data_dir = app_root / "data"
     else:
@@ -55,8 +59,7 @@ def _detect_data_dir() -> Path:
 
 
 DATA_DIR = _detect_data_dir()
-IS_PORTABLE = (DATA_DIR.name == "data" and
-               (DATA_DIR.parent / "python").exists())
+IS_PORTABLE = DATA_DIR.name == "data"
 
 # Chemins (seront mis a jour avec le profil utilisateur)
 DB_PATH = DATA_DIR / "voixclaire.db"

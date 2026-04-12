@@ -55,40 +55,48 @@ copy /y "%~dp0voixclaire.ico" "%OUT_DIR%\" >nul 2>nul
 echo   [6/7] Telechargement du modele vocal (~500Mo)...
 "%OUT_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('         OK !')"
 
-echo   [7/7] Creation du lanceur...
+echo   [7/7] Mise en forme du dossier...
 
-REM Lanceur VBS invisible (pas de fenetre noire)
+REM Tout le technique va dans un sous-dossier cache "_engine"
+mkdir "%OUT_DIR%\_engine"
+move "%OUT_DIR%\python" "%OUT_DIR%\_engine\python" >nul
+move "%OUT_DIR%\app" "%OUT_DIR%\_engine\app" >nul
+move "%OUT_DIR%\data" "%OUT_DIR%\_engine\data" >nul
+attrib +h "%OUT_DIR%\_engine"
+
+REM Lanceur VBS invisible (cache)
 (
 echo Set oShell = CreateObject("WScript.Shell"^)
 echo sDir = CreateObject("Scripting.FileSystemObject"^).GetParentFolderName(WScript.ScriptFullName^)
 echo oShell.CurrentDirectory = sDir
-echo oShell.Run "python\pythonw.exe app\main.py", 0, False
+echo oShell.Run "_engine\python\pythonw.exe _engine\app\main.py", 0, False
 ) > "%OUT_DIR%\_lancer.vbs"
 attrib +h "%OUT_DIR%\_lancer.vbs"
 
-REM Raccourci .lnk avec icone
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%OUT_DIR%\VoixClaire.lnk'); $s.TargetPath = wscript.exe; $s.Arguments = '\"%OUT_DIR%\_lancer.vbs\"'; $s.WorkingDirectory = '%OUT_DIR%'; $s.Description = 'VoixClaire - Clique pour dicter'; $s.IconLocation = '%OUT_DIR%\voixclaire.ico,0'; $s.Save()" 2>nul
+REM Le seul fichier visible : le raccourci avec icone
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%OUT_DIR%\VoixClaire.lnk'); $s.TargetPath = 'wscript.exe'; $s.Arguments = '\"%OUT_DIR%\_lancer.vbs\"'; $s.WorkingDirectory = '%OUT_DIR%'; $s.Description = 'VoixClaire - Clique pour dicter'; $s.IconLocation = '%OUT_DIR%\voixclaire.ico,0'; $s.Save()" 2>nul
 
-REM Fallback: lanceur .bat simple si le .lnk echoue
+REM Fallback .bat (cache sauf si le .lnk echoue)
 (
 echo @echo off
 echo cd /d "%%~dp0"
-echo start "" "python\pythonw.exe" "app\main.py"
+echo start "" "_engine\python\pythonw.exe" "_engine\app\main.py"
 ) > "%OUT_DIR%\VoixClaire.bat"
 
-REM Debug
+REM Debug cache
 (
 echo @echo off
 echo cd /d "%%~dp0"
-echo "python\python.exe" "app\main.py"
-echo.
-echo Appuie sur une touche pour fermer...
+echo "_engine\python\python.exe" "_engine\app\main.py"
 echo pause
-) > "%OUT_DIR%\VoixClaire_debug.bat"
-attrib +h "%OUT_DIR%\VoixClaire_debug.bat"
+) > "%OUT_DIR%\_debug.bat"
+attrib +h "%OUT_DIR%\_debug.bat"
+
+REM Cacher l'icone (utilisee par le raccourci mais pas besoin de la voir)
+attrib +h "%OUT_DIR%\voixclaire.ico"
 
 REM Signature d'integrite
-"%OUT_DIR%\python\python.exe" "%OUT_DIR%\app\verifier_integrite.py" --generate "%OUT_DIR%\app" 2>nul
+"%OUT_DIR%\_engine\python\python.exe" "%OUT_DIR%\_engine\app\verifier_integrite.py" --generate "%OUT_DIR%\_engine\app" 2>nul
 
 REM Nettoyage
 rmdir /s /q "%BUILD_DIR%" 2>nul
@@ -97,10 +105,12 @@ echo.
 echo   ======================================
 echo   Build termine !
 echo.
-echo   Le dossier "VoixClaire_Portable" est
-echo   pret a copier sur une cle USB.
+echo   Le dossier "VoixClaire_Portable"
+echo   ne contient qu'un seul fichier :
 echo.
-echo   Pour lancer : double-clic VoixClaire
+echo       VoixClaire  (raccourci avec icone)
+echo.
+echo   Copie ce dossier sur la cle USB.
 echo   ======================================
 echo.
 pause

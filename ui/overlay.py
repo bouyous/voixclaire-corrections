@@ -242,18 +242,20 @@ class TranscriptionOverlay(QWidget):
         text = self.text_edit.toPlainText().strip()
         if text != self.original_text:
             self.text_validated.emit(self.original_text, text)
-        self.text_injected.emit(text)
+        # Cacher d'abord, puis injecter apres un delai
+        # pour laisser la fenetre cible reprendre le focus
         self.hide()
+        QTimer.singleShot(300, lambda: self.text_injected.emit(text))
 
     def _on_correct(self):
         corrected = self.text_edit.toPlainText().strip()
         self.text_validated.emit(self.original_text, corrected)
-        self.text_injected.emit(corrected)
         self.hide()
+        QTimer.singleShot(300, lambda: self.text_injected.emit(corrected))
 
     def _on_cancel(self):
-        self.cancelled.emit()
         self.hide()
+        self.cancelled.emit()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
