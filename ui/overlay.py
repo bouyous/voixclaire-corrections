@@ -119,10 +119,22 @@ class TranscriptionOverlay(QWidget):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
 
-        # Titre
+        # Titre + croix fermer
+        header = QHBoxLayout()
         title = QLabel("J'ai compris :")
         title.setObjectName("overlay_title")
-        layout.addWidget(title)
+        header.addWidget(title)
+        header.addStretch()
+        btn_close = QPushButton("X")
+        btn_close.setFixedSize(28, 28)
+        btn_close.setStyleSheet(
+            "QPushButton { background-color: #45475a; color: #cdd6f4; "
+            "border-radius: 14px; font-size: 12px; font-weight: bold; border: none; }"
+            "QPushButton:hover { background-color: #f38ba8; color: #1e1e2e; }"
+        )
+        btn_close.clicked.connect(self._on_cancel)
+        header.addWidget(btn_close)
+        layout.addLayout(header)
 
         # Zone de texte editable
         self.text_edit = QTextEdit()
@@ -161,11 +173,13 @@ class TranscriptionOverlay(QWidget):
         btn_layout.addWidget(self.btn_cancel)
         layout.addLayout(btn_layout)
 
-    def show_transcription(self, text: str, auto_inject_seconds: int = 0):
-        """Affiche la transcription dans l'overlay."""
+    def show_transcription(self, text: str, bar_geometry=None):
+        """Affiche la transcription pres de la barre flottante.
+
+        bar_geometry: QRect de la barre, pour savoir ou se placer.
+        """
         self.original_text = text
 
-        # Bloquer les signaux pendant qu'on met le texte
         self.text_edit.blockSignals(True)
         self.text_edit.setPlainText(text)
         self.text_edit.blockSignals(False)
@@ -174,10 +188,26 @@ class TranscriptionOverlay(QWidget):
         self.hint.setText("Clique dans le texte pour le corriger, ou clique OK")
         self.hint.setStyleSheet("font-size: 11px; color: #a6adc8;")
 
-        # Centrer sous la barre flottante
+        # Positionner la popup
         screen = QApplication.primaryScreen().geometry()
         x = (screen.width() - self.width()) // 2
-        self.move(x, 70)
+
+        if bar_geometry:
+            bar_bottom = bar_geometry.y() + bar_geometry.height()
+            bar_top = bar_geometry.y()
+            screen_mid = screen.height() // 2
+
+            if bar_top > screen_mid:
+                # Barre en bas de l'ecran → popup AU-DESSUS
+                self.adjustSize()
+                y = bar_top - self.height() - 10
+            else:
+                # Barre en haut → popup EN-DESSOUS
+                y = bar_bottom + 10
+        else:
+            y = 70
+
+        self.move(x, max(0, y))
 
         self.show()
         self.raise_()

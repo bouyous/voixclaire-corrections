@@ -249,7 +249,7 @@ class AppController(QObject):
 
         corrected, modifications = self.learner.apply_corrections(text)
 
-        self.overlay.show_transcription(corrected)
+        self.overlay.show_transcription(corrected, self.bar.geometry())
 
         if modifications:
             mods = ", ".join(f'"{m["original"]}"->"{m["corrected"]}"' for m in modifications)
