@@ -1,155 +1,106 @@
 @echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo.
-echo   ╔══════════════════════════════════════════╗
-echo   ║  VoixClaire - Build Portable             ║
-echo   ║  Cree un dossier autonome sans install   ║
-echo   ╚══════════════════════════════════════════╝
+echo   VoixClaire - Build Portable (cle USB)
+echo   ======================================
 echo.
 
-set "BUILD_DIR=%~dp0portable_build"
+set "BUILD_DIR=%~dp0_temp_build"
 set "OUT_DIR=%~dp0VoixClaire_Portable"
-set "PYTHON_VERSION=3.11.9"
 set "PYTHON_ZIP=python-3.11.9-embed-amd64.zip"
 set "PYTHON_URL=https://www.python.org/ftp/python/3.11.9/%PYTHON_ZIP%"
 set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 
-:: Nettoyage
 if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
 if exist "%OUT_DIR%" rmdir /s /q "%OUT_DIR%"
 mkdir "%BUILD_DIR%"
 mkdir "%OUT_DIR%"
+mkdir "%OUT_DIR%\python"
+mkdir "%OUT_DIR%\app"
+mkdir "%OUT_DIR%\app\ui"
+mkdir "%OUT_DIR%\data"
 
-:: ===== 1. Telecharger Python Embedded =====
-echo   [1/6] Telechargement de Python embarque...
-curl -L -o "%BUILD_DIR%\%PYTHON_ZIP%" "%PYTHON_URL%"
-if %errorlevel% neq 0 (
-    echo   [!] Echec telechargement Python. Verifiez votre connexion.
+echo   [1/7] Telechargement de Python 3.11...
+curl -L -s -o "%BUILD_DIR%\%PYTHON_ZIP%" "%PYTHON_URL%"
+if !errorlevel! neq 0 (
+    echo   ERREUR: Impossible de telecharger Python. Verifiez internet.
     pause
     exit /b 1
 )
 
-:: Extraire Python
-echo   [2/6] Extraction de Python...
-mkdir "%OUT_DIR%\python"
+echo   [2/7] Extraction de Python...
 tar -xf "%BUILD_DIR%\%PYTHON_ZIP%" -C "%OUT_DIR%\python"
 
-:: Activer les imports de site-packages
-:: (par defaut, Python embedded desactive import site)
-set "PTH_FILE="
-for %%f in ("%OUT_DIR%\python\python*._pth") do set "PTH_FILE=%%f"
-if defined PTH_FILE (
-    echo import site>> "!PTH_FILE!"
+REM Activer site-packages dans python embedded
+for %%f in ("%OUT_DIR%\python\python*._pth") do (
+    echo import site>> "%%f"
 )
 
-:: ===== 2. Installer pip =====
-echo   [3/6] Installation de pip...
-curl -L -o "%BUILD_DIR%\get-pip.py" "%GET_PIP_URL%"
-"%OUT_DIR%\python\python.exe" "%BUILD_DIR%\get-pip.py" --no-warn-script-location -q
+echo   [3/7] Installation de pip...
+curl -L -s -o "%BUILD_DIR%\get-pip.py" "%GET_PIP_URL%"
+"%OUT_DIR%\python\python.exe" "%BUILD_DIR%\get-pip.py" --no-warn-script-location -q 2>nul
 
-:: ===== 3. Installer les dependances =====
-echo   [4/6] Installation des dependances (peut prendre plusieurs minutes)...
-"%OUT_DIR%\python\python.exe" -m pip install --no-warn-script-location -q ^
-    faster-whisper ^
-    PyQt6 ^
-    sounddevice ^
-    numpy ^
-    scipy ^
-    librosa ^
-    scikit-learn ^
-    pynput ^
-    pyperclip
+echo   [4/7] Installation des dependances...
+echo         (cela peut prendre plusieurs minutes)
+"%OUT_DIR%\python\python.exe" -m pip install --no-warn-script-location -q faster-whisper PyQt6 sounddevice numpy scipy librosa scikit-learn pynput pyperclip 2>nul
 
-:: ===== 4. Copier le code source =====
-echo   [5/6] Copie de VoixClaire...
-mkdir "%OUT_DIR%\app"
-mkdir "%OUT_DIR%\app\ui"
+echo   [5/7] Copie de VoixClaire...
+for %%f in (main.py config.py database.py audio_engine.py transcriber.py adaptive_learner.py text_injector.py sync.py verifier_integrite.py) do (
+    copy /y "%~dp0%%f" "%OUT_DIR%\app\" >nul
+)
+copy /y "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
+copy /y "%~dp0voixclaire.ico" "%OUT_DIR%\" >nul 2>nul
 
-copy "%~dp0main.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0config.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0database.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0audio_engine.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0transcriber.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0adaptive_learner.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0text_injector.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0sync.py" "%OUT_DIR%\app\" >nul
-copy "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
-copy "%~dp0verifier_integrite.py" "%OUT_DIR%\app\" >nul
+echo   [6/7] Telechargement du modele vocal (~500Mo)...
+"%OUT_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('         OK !')"
 
-:: Generer les hashes d'integrite
-echo         Signature d'integrite...
-"%OUT_DIR%\python\python.exe" "%OUT_DIR%\app\verifier_integrite.py" --generate "%OUT_DIR%\app"
+echo   [7/7] Creation du lanceur...
 
-:: Creer le dossier data (corrections sur la cle USB)
-mkdir "%OUT_DIR%\data"
-
-:: Copier l'icone
-copy "%~dp0voixclaire.ico" "%OUT_DIR%\" >nul
-
-:: ===== 5. Creer le lanceur =====
-echo   [6/6] Creation du lanceur...
-
-:: Lanceur .bat cache (appele par le raccourci)
+REM Lanceur VBS invisible (pas de fenetre noire)
 (
-echo @echo off
-echo chcp 65001 ^>nul
-echo cd /d "%%~dp0"
-echo start "" "python\pythonw.exe" "app\main.py"
-) > "%OUT_DIR%\_lancer.bat"
-attrib +h "%OUT_DIR%\_lancer.bat"
-
-:: Lanceur VBS invisible (pas de fenetre console noire)
-(
-echo Set WshShell = CreateObject("WScript.Shell"^)
-echo WshShell.CurrentDirectory = CreateObject("Scripting.FileSystemObject"^).GetParentFolderName(WScript.ScriptFullName^)
-echo WshShell.Run "python\pythonw.exe app\main.py", 0, False
+echo Set oShell = CreateObject("WScript.Shell"^)
+echo sDir = CreateObject("Scripting.FileSystemObject"^).GetParentFolderName(WScript.ScriptFullName^)
+echo oShell.CurrentDirectory = sDir
+echo oShell.Run "python\pythonw.exe app\main.py", 0, False
 ) > "%OUT_DIR%\_lancer.vbs"
 attrib +h "%OUT_DIR%\_lancer.vbs"
 
-:: Creer le raccourci avec icone de micro
-powershell -NoProfile -Command ^
-  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%OUT_DIR%\VoixClaire.lnk'); $s.TargetPath = '%OUT_DIR%\_lancer.vbs'; $s.WorkingDirectory = '%OUT_DIR%'; $s.Description = 'VoixClaire - Clique pour dicter !'; $s.IconLocation = '%OUT_DIR%\voixclaire.ico,0'; $s.Save()"
+REM Raccourci .lnk avec icone
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%OUT_DIR%\VoixClaire.lnk'); $s.TargetPath = wscript.exe; $s.Arguments = '\"%OUT_DIR%\_lancer.vbs\"'; $s.WorkingDirectory = '%OUT_DIR%'; $s.Description = 'VoixClaire - Clique pour dicter'; $s.IconLocation = '%OUT_DIR%\voixclaire.ico,0'; $s.Save()" 2>nul
 
-:: Lanceur debug (cache)
+REM Fallback: lanceur .bat simple si le .lnk echoue
 (
 echo @echo off
-echo chcp 65001 ^>nul
+echo cd /d "%%~dp0"
+echo start "" "python\pythonw.exe" "app\main.py"
+) > "%OUT_DIR%\VoixClaire.bat"
+
+REM Debug
+(
+echo @echo off
 echo cd /d "%%~dp0"
 echo "python\python.exe" "app\main.py"
+echo.
+echo Appuie sur une touche pour fermer...
 echo pause
 ) > "%OUT_DIR%\VoixClaire_debug.bat"
 attrib +h "%OUT_DIR%\VoixClaire_debug.bat"
 
-:: Pre-telecharger le modele Whisper
-echo.
-echo   Telechargement du modele de reconnaissance vocale (~500Mo)...
-echo   (premiere utilisation sera instantanee grace a ca)
-"%OUT_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('   Modele telecharge !')"
+REM Signature d'integrite
+"%OUT_DIR%\python\python.exe" "%OUT_DIR%\app\verifier_integrite.py" --generate "%OUT_DIR%\app" 2>nul
 
-:: Nettoyage
+REM Nettoyage
 rmdir /s /q "%BUILD_DIR%" 2>nul
 
-:: Calculer la taille
-set size=0
-for /f "tokens=3" %%a in ('dir /s "%OUT_DIR%" ^| findstr "File(s)"') do set size=%%a
-
 echo.
-echo   ╔══════════════════════════════════════════╗
-echo   ║           Build termine !                ║
-echo   ╠══════════════════════════════════════════╣
-echo   ║                                          ║
-echo   ║  Le dossier "VoixClaire_Portable" est    ║
-echo   ║  pret a etre copie sur une cle USB       ║
-echo   ║  ou un partage reseau.                   ║
-echo   ║                                          ║
-echo   ║  Pour lancer : double-clic sur           ║
-echo   ║  VoixClaire.bat                          ║
-echo   ║                                          ║
-echo   ║  Aucune installation requise !           ║
-echo   ║  Aucun droit administrateur !            ║
-echo   ║                                          ║
-echo   ╚══════════════════════════════════════════╝
+echo   ======================================
+echo   Build termine !
+echo.
+echo   Le dossier "VoixClaire_Portable" est
+echo   pret a copier sur une cle USB.
+echo.
+echo   Pour lancer : double-clic VoixClaire
+echo   ======================================
 echo.
 pause
