@@ -76,6 +76,11 @@ copy "%~dp0adaptive_learner.py" "%OUT_DIR%\app\" >nul
 copy "%~dp0text_injector.py" "%OUT_DIR%\app\" >nul
 copy "%~dp0sync.py" "%OUT_DIR%\app\" >nul
 copy "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
+copy "%~dp0verifier_integrite.py" "%OUT_DIR%\app\" >nul
+
+:: Generer les hashes d'integrite
+echo         Signature d'integrite...
+"%OUT_DIR%\python\python.exe" "%OUT_DIR%\app\verifier_integrite.py" --generate "%OUT_DIR%\app"
 
 :: Creer le dossier data (corrections sur la cle USB)
 mkdir "%OUT_DIR%\data"
