@@ -249,8 +249,7 @@ class AppController(QObject):
 
         corrected, modifications = self.learner.apply_corrections(text)
 
-        timeout = self.config.get("overlay_timeout", 5) if not modifications else 0
-        self.overlay.show_transcription(corrected, timeout)
+        self.overlay.show_transcription(corrected)
 
         if modifications:
             mods = ", ".join(f'"{m["original"]}"->"{m["corrected"]}"' for m in modifications)

@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont, QCursor
 
 OVERLAY_STYLE = """
 QWidget#overlay {
-    background-color: rgba(30, 30, 46, 245);
+    background-color: #1e1e2e;
     border: 2px solid #89b4fa;
     border-radius: 16px;
 }
@@ -21,7 +21,7 @@ QLabel {
 }
 
 QLabel#overlay_title {
-    font-size: 12px;
+    font-size: 14px;
     color: #89b4fa;
     font-weight: bold;
 }
@@ -88,33 +88,32 @@ class TranscriptionOverlay(QWidget):
     """
     Popup qui apparait apres une dictee.
 
-    Affiche le texte reconnu. L'utilisateur peut:
-    - Appuyer Entree ou cliquer "OK" → injecte le texte tel quel
-    - Modifier le texte puis "Corriger" → apprend la correction + injecte
-    - Echap ou "Annuler" → annule
+    L'utilisateur peut:
+    - Modifier le texte puis "Corriger + Ecrire" pour apprendre
+    - Cliquer "OK" pour ecrire tel quel
+    - Echap ou "Annuler" pour annuler
     """
 
-    text_validated = pyqtSignal(str, str)   # (original, corrected)
+    text_validated = pyqtSignal(str, str)
     text_injected = pyqtSignal(str)
     cancelled = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.original_text = ""
-        self._auto_timer = QTimer(self)
-        self._auto_timer.setSingleShot(True)
-        self._auto_timer.timeout.connect(self._on_auto_inject)
         self._setup_ui()
 
     def _setup_ui(self):
         self.setObjectName("overlay")
+        # Fenetre normale (pas Tool) pour accepter le focus proprement
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
         )
         self.setStyleSheet(OVERLAY_STYLE)
         self.setFixedWidth(500)
+        # S'assurer que la fenetre accepte le focus
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -125,16 +124,17 @@ class TranscriptionOverlay(QWidget):
         title.setObjectName("overlay_title")
         layout.addWidget(title)
 
-        # Zone de texte
+        # Zone de texte editable
         self.text_edit = QTextEdit()
         self.text_edit.setObjectName("overlay_text")
         self.text_edit.setMaximumHeight(120)
         self.text_edit.setFont(QFont("Segoe UI", 16))
+        self.text_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.text_edit.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.text_edit)
 
         # Indication
-        self.hint = QLabel("Modifie le texte si c'est pas bon, puis clique 'Corriger'")
+        self.hint = QLabel("")
         self.hint.setObjectName("hint_label")
         self.hint.setWordWrap(True)
         layout.addWidget(self.hint)
@@ -164,9 +164,15 @@ class TranscriptionOverlay(QWidget):
     def show_transcription(self, text: str, auto_inject_seconds: int = 0):
         """Affiche la transcription dans l'overlay."""
         self.original_text = text
+
+        # Bloquer les signaux pendant qu'on met le texte
+        self.text_edit.blockSignals(True)
         self.text_edit.setPlainText(text)
+        self.text_edit.blockSignals(False)
+
         self.btn_correct.setVisible(False)
-        self.hint.setText("C'est bon ? Appuie sur Entree ou clique OK")
+        self.hint.setText("Clique dans le texte pour le corriger, ou clique OK")
+        self.hint.setStyleSheet("font-size: 11px; color: #a6adc8;")
 
         # Centrer sous la barre flottante
         screen = QApplication.primaryScreen().geometry()
@@ -175,57 +181,61 @@ class TranscriptionOverlay(QWidget):
 
         self.show()
         self.raise_()
-        self.text_edit.setFocus()
-        self.text_edit.selectAll()
+        self.activateWindow()
 
-        if auto_inject_seconds > 0:
-            self._auto_timer.start(auto_inject_seconds * 1000)
+        # Mettre le focus sur le texte apres un petit delai
+        # (pour que la fenetre soit bien affichee avant)
+        QTimer.singleShot(100, self._focus_text)
+
+    def _focus_text(self):
+        """Donne le focus au champ texte."""
+        self.activateWindow()
+        self.text_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+        # Placer le curseur a la fin (pas de selectAll pour eviter
+        # que le texte disparaisse quand on clique)
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.text_edit.setTextCursor(cursor)
 
     def _on_text_changed(self):
         current = self.text_edit.toPlainText().strip()
         modified = current != self.original_text
         self.btn_correct.setVisible(modified)
         if modified:
-            self.hint.setText("Tu as corrige le texte - clique 'Corriger' pour que j'apprenne !")
+            self.hint.setText("Tu as corrige le texte - clique 'Corriger + Ecrire' pour que j'apprenne !")
             self.hint.setStyleSheet("font-size: 11px; color: #a6e3a1; font-weight: bold;")
         else:
-            self.hint.setText("C'est bon ? Appuie sur Entree ou clique OK")
+            self.hint.setText("Clique dans le texte pour le corriger, ou clique OK")
             self.hint.setStyleSheet("font-size: 11px; color: #a6adc8;")
-        self._auto_timer.stop()
 
     def _on_inject(self):
-        self._auto_timer.stop()
         text = self.text_edit.toPlainText().strip()
-        # Si le texte a ete modifie, apprendre quand meme
         if text != self.original_text:
             self.text_validated.emit(self.original_text, text)
         self.text_injected.emit(text)
         self.hide()
 
     def _on_correct(self):
-        self._auto_timer.stop()
         corrected = self.text_edit.toPlainText().strip()
         self.text_validated.emit(self.original_text, corrected)
         self.text_injected.emit(corrected)
         self.hide()
 
-    def _on_auto_inject(self):
-        text = self.text_edit.toPlainText().strip()
-        self.text_injected.emit(text)
-        self.hide()
-
     def _on_cancel(self):
-        self._auto_timer.stop()
         self.cancelled.emit()
         self.hide()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Return and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            if self.btn_correct.isVisible():
-                self._on_correct()
-            else:
-                self._on_inject()
-        elif event.key() == Qt.Key.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self._on_cancel()
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            # Entree = valider (seulement si pas Shift+Entree pour saut de ligne)
+            if event.modifiers() != Qt.KeyboardModifier.ShiftModifier:
+                if self.btn_correct.isVisible():
+                    self._on_correct()
+                else:
+                    self._on_inject()
+            else:
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
