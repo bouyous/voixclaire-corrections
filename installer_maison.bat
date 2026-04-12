@@ -81,6 +81,7 @@ copy /y "%~dp0adaptive_learner.py" "%APP_DIR%\" >nul
 copy /y "%~dp0text_injector.py" "%APP_DIR%\" >nul
 copy /y "%~dp0sync.py" "%APP_DIR%\" >nul
 copy /y "%~dp0ui\*.py" "%APP_DIR%\ui\" >nul
+copy /y "%~dp0voixclaire.ico" "%INSTALL_DIR%\" >nul
 
 :: ===== 5. Modele Whisper =====
 echo   [5/6] Telechargement du modele vocal (~500Mo, premiere fois)...
@@ -103,18 +104,18 @@ echo WshShell.Run """%INSTALL_DIR%\python\pythonw.exe"" ""%APP_DIR%\main.py""", 
 
 :: Creer le raccourci Bureau via PowerShell
 powershell -NoProfile -Command ^
-  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'VoixClaire.lnk')); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = 'shell32.dll,168'; $s.Save()"
+  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'VoixClaire.lnk')); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = '%INSTALL_DIR%\voixclaire.ico,0'; $s.Save()"
 
 :: Creer le raccourci dans le menu Demarrer (epingle possible)
 set "STARTMENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 powershell -NoProfile -Command ^
-  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%STARTMENU%\VoixClaire.lnk'); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = 'shell32.dll,168'; $s.Save()"
+  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%STARTMENU%\VoixClaire.lnk'); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = '%INSTALL_DIR%\voixclaire.ico,0'; $s.Save()"
 
 :: Creer le raccourci dans la barre des taches
 set "TASKBAR=%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"
 if exist "%TASKBAR%" (
     powershell -NoProfile -Command ^
-      "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%TASKBAR%\VoixClaire.lnk'); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = 'shell32.dll,168'; $s.Save()"
+      "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%TASKBAR%\VoixClaire.lnk'); $s.TargetPath = '%INSTALL_DIR%\VoixClaire.vbs'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'VoixClaire - Reconnaissance vocale'; $s.IconLocation = '%INSTALL_DIR%\voixclaire.ico,0'; $s.Save()"
 )
 
 :: Nettoyage

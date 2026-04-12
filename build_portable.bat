@@ -80,18 +80,34 @@ copy "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
 :: Creer le dossier data (corrections sur la cle USB)
 mkdir "%OUT_DIR%\data"
 
+:: Copier l'icone
+copy "%~dp0voixclaire.ico" "%OUT_DIR%\" >nul
+
 :: ===== 5. Creer le lanceur =====
 echo   [6/6] Creation du lanceur...
 
-:: Lanceur principal (double-clic pour demarrer)
+:: Lanceur .bat cache (appele par le raccourci)
 (
 echo @echo off
 echo chcp 65001 ^>nul
 echo cd /d "%%~dp0"
 echo start "" "python\pythonw.exe" "app\main.py"
-) > "%OUT_DIR%\VoixClaire.bat"
+) > "%OUT_DIR%\_lancer.bat"
+attrib +h "%OUT_DIR%\_lancer.bat"
 
-:: Lanceur avec console (pour debug)
+:: Lanceur VBS invisible (pas de fenetre console noire)
+(
+echo Set WshShell = CreateObject("WScript.Shell"^)
+echo WshShell.CurrentDirectory = CreateObject("Scripting.FileSystemObject"^).GetParentFolderName(WScript.ScriptFullName^)
+echo WshShell.Run "python\pythonw.exe app\main.py", 0, False
+) > "%OUT_DIR%\_lancer.vbs"
+attrib +h "%OUT_DIR%\_lancer.vbs"
+
+:: Creer le raccourci avec icone de micro
+powershell -NoProfile -Command ^
+  "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%OUT_DIR%\VoixClaire.lnk'); $s.TargetPath = '%OUT_DIR%\_lancer.vbs'; $s.WorkingDirectory = '%OUT_DIR%'; $s.Description = 'VoixClaire - Clique pour dicter !'; $s.IconLocation = '%OUT_DIR%\voixclaire.ico,0'; $s.Save()"
+
+:: Lanceur debug (cache)
 (
 echo @echo off
 echo chcp 65001 ^>nul
@@ -99,6 +115,7 @@ echo cd /d "%%~dp0"
 echo "python\python.exe" "app\main.py"
 echo pause
 ) > "%OUT_DIR%\VoixClaire_debug.bat"
+attrib +h "%OUT_DIR%\VoixClaire_debug.bat"
 
 :: Pre-telecharger le modele Whisper
 echo.
