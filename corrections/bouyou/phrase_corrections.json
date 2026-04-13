@@ -8,5 +8,15 @@
     "wrong_phrase": "salut, je suis bouyou. je fais encore un test. j'espère que toutes les modifications demandées à cloudcode fonctionnent. en attendant, je vais te parler de mots difficiles peut-être comme des pokémon. le pokémon pikachu par exemple. ou alors une black box de drones. tu sais, le truc qui s'enregistre sur la mémoire de la fc. la fc c'est un flight controller.",
     "correct_phrase": "Salut, je suis Bouyou. Je fais encore un test. J'espère que toutes les modifications demandées à Claude code fonctionnent. En attendant, je vais te parler de mots difficiles peut-être comme des Pokémon. Le Pokémon Pikachu par exemple. Ou alors une Black Box de drones. Tu sais, le truc qui s'enregistre sur la mémoire de la FC. La FC c'est un Flight Controller.",
     "count": 1
+  },
+  {
+    "wrong_phrase": "pinnisho libu dijba",
+    "correct_phrase": "pie niche haut et l'hiboux niche bas",
+    "count": 1
+  },
+  {
+    "wrong_phrase": "ok, petit test d'écoute, la pinnisho libu dijba, est-ce que tu comprends la pinnisho libu dijba ?",
+    "correct_phrase": "Ok, petit test d'écoute, la pinnisho libu dijba, est-ce que tu comprends la pie niche haut et l'hiboux niche bas ?",
+    "count": 1
   }
 ]
