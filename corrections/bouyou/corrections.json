@@ -16,5 +16,11 @@
     "correct_text": "Bouyou,",
     "count": 1,
     "confidence": 1.0
+  },
+  {
+    "wrong_text": "l'im",
+    "correct_text": "Liam",
+    "count": 1,
+    "confidence": 1.0
   }
 ]
