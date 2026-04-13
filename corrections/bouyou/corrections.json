@@ -10,5 +10,11 @@
     "correct_text": "bouyou",
     "count": 1,
     "confidence": 1.0
+  },
+  {
+    "wrong_text": "bouillou,",
+    "correct_text": "Bouyou,",
+    "count": 1,
+    "confidence": 1.0
   }
 ]
