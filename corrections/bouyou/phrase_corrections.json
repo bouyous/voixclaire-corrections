@@ -18,5 +18,15 @@
     "wrong_phrase": "ok, petit test d'écoute, la pinnisho libu dijba, est-ce que tu comprends la pinnisho libu dijba ?",
     "correct_phrase": "Ok, petit test d'écoute, la pinnisho libu dijba, est-ce que tu comprends la pie niche haut et l'hiboux niche bas ?",
     "count": 1
+  },
+  {
+    "wrong_phrase": "brillant son",
+    "correct_phrase": "briançon",
+    "count": 1
+  },
+  {
+    "wrong_phrase": "service des impôts de brillant son",
+    "correct_phrase": "Service des impôts de briançon",
+    "count": 1
   }
 ]
