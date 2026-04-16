@@ -3,7 +3,7 @@
 import threading
 import numpy as np
 from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
 
 from config import (
     load_config, save_config, set_user_profile,
