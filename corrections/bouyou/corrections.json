@@ -22,5 +22,23 @@
     "correct_text": "Liam",
     "count": 1,
     "confidence": 1.0
+  },
+  {
+    "wrong_text": "jean.",
+    "correct_text": "Agent.",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
+    "wrong_text": "pwv",
+    "correct_text": "PW",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
+    "wrong_text": "je",
+    "correct_text": "tu",
+    "count": 1,
+    "confidence": 1.0
   }
 ]
