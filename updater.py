@@ -53,7 +53,7 @@ def _has_internet() -> bool:
 def _get_remote_version() -> dict:
     """Recupere le fichier version.json depuis GitHub."""
     try:
-        url = f"{GITHUB_RAW}/voix_claire/{VERSION_FILE}"
+        url = f"{GITHUB_RAW}/{VERSION_FILE}"
         req = urllib.request.urlopen(url, timeout=2)
         return json.loads(req.read().decode("utf-8"))
     except Exception:
@@ -73,7 +73,7 @@ def _get_local_version(app_dir: Path) -> dict:
 
 def _download_file(filename: str, dest: Path) -> bool:
     """Telecharge un fichier depuis GitHub."""
-    url = f"{GITHUB_RAW}/voix_claire/{filename}"
+    url = f"{GITHUB_RAW}/{filename}"
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         # urlretrieve sans timeout peut bloquer - utiliser urlopen avec timeout
