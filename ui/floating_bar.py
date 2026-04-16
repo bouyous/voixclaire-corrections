@@ -161,11 +161,15 @@ class FloatingBar(QWidget):
     # Signaux
     record_clicked = pyqtSignal()
     dictionary_clicked = pyqtSignal()
+    history_clicked = pyqtSignal()
     settings_clicked = pyqtSignal()
     quit_clicked = pyqtSignal()
     sync_clicked = pyqtSignal()
     profile_changed = pyqtSignal(str)     # nom du profil
     mic_changed = pyqtSignal(object)      # device index (int ou None)
+
+    # Signal pour annuler l'enregistrement
+    cancel_recording = pyqtSignal()
 
     def __init__(self, user_name: str = "", profiles: list[str] = None,
                  mic_devices: list[dict] = None, parent=None):
@@ -174,6 +178,7 @@ class FloatingBar(QWidget):
         self.profiles = profiles or []
         self.mic_devices = mic_devices or []
         self._recording = False
+        self._mic_locked = False  # Anti-double-clic
         self._setup_ui()
         self._setup_tray()
 
@@ -201,6 +206,20 @@ class FloatingBar(QWidget):
         app_label = QLabel("VoixClaire")
         app_label.setObjectName("app_name")
         layout.addWidget(app_label)
+
+        # Bouton Annuler (visible seulement pendant l'enregistrement)
+        self.btn_cancel_rec = QPushButton("Annuler")
+        self.btn_cancel_rec.setObjectName("small_btn")
+        self.btn_cancel_rec.setToolTip("Annuler l'enregistrement en cours")
+        self.btn_cancel_rec.setStyleSheet(
+            "QPushButton { background-color: #f38ba8; border: none; "
+            "border-radius: 6px; padding: 4px 10px; color: #1e1e2e; "
+            "font-size: 11px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #eba0ac; }"
+        )
+        self.btn_cancel_rec.setVisible(False)
+        self.btn_cancel_rec.clicked.connect(self._on_cancel_recording)
+        layout.addWidget(self.btn_cancel_rec)
 
         # Selecteur de profil
         self.profile_combo = QComboBox()
@@ -236,6 +255,12 @@ class FloatingBar(QWidget):
         layout.addWidget(self.mic_combo)
 
         # Boutons discrets
+        btn_history = QPushButton("Historique")
+        btn_history.setObjectName("small_btn")
+        btn_history.setToolTip("Derniers textes dictes")
+        btn_history.clicked.connect(self.history_clicked.emit)
+        layout.addWidget(btn_history)
+
         btn_dict = QPushButton("Mots appris")
         btn_dict.setObjectName("small_btn")
         btn_dict.clicked.connect(self.dictionary_clicked.emit)
@@ -251,6 +276,27 @@ class FloatingBar(QWidget):
         btn_settings.setToolTip("Parametres")
         btn_settings.clicked.connect(self.settings_clicked.emit)
         layout.addWidget(btn_settings)
+
+        # Bouton reduire (masque la barre, reste dans le tray)
+        btn_minimize = QPushButton("\u2014")
+        btn_minimize.setObjectName("small_btn")
+        btn_minimize.setToolTip("Reduire dans la barre des taches")
+        btn_minimize.setFixedWidth(28)
+        btn_minimize.clicked.connect(self._minimize_to_tray)
+        layout.addWidget(btn_minimize)
+
+        # Bouton fermer
+        btn_close = QPushButton("X")
+        btn_close.setObjectName("small_btn")
+        btn_close.setToolTip("Quitter VoixClaire")
+        btn_close.setFixedWidth(28)
+        btn_close.setStyleSheet(
+            "QPushButton { background-color: transparent; border: 1px solid #45475a; "
+            "border-radius: 6px; color: #a6adc8; font-size: 11px; }"
+            "QPushButton:hover { background-color: #f38ba8; border-color: #f38ba8; color: #1e1e2e; }"
+        )
+        btn_close.clicked.connect(self.quit_clicked.emit)
+        layout.addWidget(btn_close)
 
     def _populate_profiles(self):
         """Remplit le selecteur de profils."""
@@ -331,8 +377,29 @@ class FloatingBar(QWidget):
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
 
+    def _minimize_to_tray(self):
+        """Masque la barre, reste accessible via l'icone dans la barre des taches."""
+        self.hide()
+        self.tray.showMessage(
+            "VoixClaire",
+            "VoixClaire est reduit. Double-cliquez l'icone pour le rouvrir.",
+            QSystemTrayIcon.MessageIcon.Information, 2000
+        )
+
     def _on_mic_clicked(self):
+        # Anti-double-clic: bloquer pendant 1.5 seconde apres un clic
+        if self._mic_locked:
+            return
+        self._mic_locked = True
+        QTimer.singleShot(1500, self._unlock_mic)
         self.record_clicked.emit()
+
+    def _unlock_mic(self):
+        self._mic_locked = False
+
+    def _on_cancel_recording(self):
+        """Annule l'enregistrement en cours."""
+        self.cancel_recording.emit()
 
     def set_recording(self, recording: bool):
         """Met a jour l'etat visuel d'enregistrement."""
@@ -342,6 +409,7 @@ class FloatingBar(QWidget):
         self.mic_btn.style().unpolish(self.mic_btn)
         self.mic_btn.style().polish(self.mic_btn)
         self.tray.setIcon(create_tray_icon(recording))
+        self.btn_cancel_rec.setVisible(recording)
 
         if recording:
             self.status_label.setText("Je t'ecoute...")

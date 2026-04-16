@@ -1,11 +1,14 @@
 """Dialogue des parametres."""
 
+import os
+import sys
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QComboBox,
     QPushButton, QGroupBox, QSpinBox, QCheckBox, QHBoxLayout,
 )
 from PyQt6.QtCore import Qt
-from config import load_config, save_config
+from config import load_config, save_config, IS_PORTABLE
 from audio_engine import AudioEngine
 
 
@@ -85,6 +88,11 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("VoixClaire - Parametres")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
         self.setMinimumWidth(480)
         self.setStyleSheet(SETTINGS_STYLE)
         self.config = load_config()
@@ -161,6 +169,14 @@ class SettingsDialog(QDialog):
         self.timeout_spin.setSuffix(" sec")
         behavior_layout.addRow("Delai avant ecriture auto :", self.timeout_spin)
 
+        # Option demarrage automatique (uniquement en mode installe)
+        if not IS_PORTABLE:
+            self.startup_cb = QCheckBox("Lancer VoixClaire au demarrage de Windows")
+            self.startup_cb.setChecked(self._is_startup_enabled())
+            behavior_layout.addRow(self.startup_cb)
+        else:
+            self.startup_cb = None
+
         layout.addWidget(behavior_group)
 
         # Boutons
@@ -182,4 +198,66 @@ class SettingsDialog(QDialog):
         self.config["show_overlay"] = self.overlay_cb.isChecked()
         self.config["overlay_timeout"] = self.timeout_spin.value()
         save_config(self.config)
+
+        # Gerer le demarrage automatique
+        if self.startup_cb is not None:
+            if self.startup_cb.isChecked():
+                self._enable_startup()
+            else:
+                self._disable_startup()
+
         self.accept()
+
+    # --- Demarrage automatique Windows ---
+
+    @staticmethod
+    def _startup_shortcut_path() -> Path:
+        """Chemin du raccourci dans le dossier Demarrage de Windows."""
+        startup_dir = Path(os.environ.get("APPDATA", "")) / \
+            "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+        return startup_dir / "VoixClaire.lnk"
+
+    @staticmethod
+    def _is_startup_enabled() -> bool:
+        return SettingsDialog._startup_shortcut_path().exists()
+
+    @staticmethod
+    def _enable_startup():
+        """Cree un raccourci dans le dossier Demarrage."""
+        install_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "VoixClaire"
+        vbs_path = install_dir / "VoixClaire.vbs"
+        icon_path = install_dir / "voixclaire.ico"
+        shortcut_path = SettingsDialog._startup_shortcut_path()
+
+        if not vbs_path.exists():
+            return
+
+        try:
+            import subprocess
+            ps_cmd = (
+                f'$ws = New-Object -ComObject WScript.Shell; '
+                f'$s = $ws.CreateShortcut("{shortcut_path}"); '
+                f'$s.TargetPath = "wscript.exe"; '
+                f'$s.Arguments = \'"{vbs_path}"\'; '
+                f'$s.WorkingDirectory = "{install_dir}"; '
+                f'$s.Description = "VoixClaire - Demarrage automatique"; '
+            )
+            if icon_path.exists():
+                ps_cmd += f'$s.IconLocation = "{icon_path},0"; '
+            ps_cmd += '$s.Save()'
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                capture_output=True, timeout=10,
+            )
+        except Exception:
+            pass
+
+    @staticmethod
+    def _disable_startup():
+        """Supprime le raccourci du dossier Demarrage."""
+        shortcut = SettingsDialog._startup_shortcut_path()
+        try:
+            if shortcut.exists():
+                shortcut.unlink()
+        except Exception:
+            pass

@@ -19,6 +19,8 @@ from ui.floating_bar import FloatingBar
 from ui.overlay import TranscriptionOverlay
 from ui.dictionary_dialog import DictionaryDialog
 from ui.settings_dialog import SettingsDialog
+from ui.history_dialog import HistoryDialog
+from datetime import datetime
 
 
 class AppController(QObject):
@@ -62,6 +64,7 @@ class AppController(QObject):
         self._current_audio = None
         self._current_words = []
         self._original_text = ""
+        self._history = []  # Liste des 4 dernieres transcriptions
 
         # Lister les profils et les micros
         profiles = self._get_all_profiles()
@@ -112,7 +115,9 @@ class AppController(QObject):
     def _connect_signals(self):
         # Barre flottante
         self.bar.record_clicked.connect(self._toggle_recording)
+        self.bar.cancel_recording.connect(self._cancel_recording)
         self.bar.dictionary_clicked.connect(self._show_dictionary)
+        self.bar.history_clicked.connect(self._show_history)
         self.bar.settings_clicked.connect(self._show_settings)
         self.bar.quit_clicked.connect(self._quit)
         self.bar.sync_clicked.connect(self._manual_sync)
@@ -211,12 +216,27 @@ class AppController(QObject):
         if not self.transcriber.is_loaded:
             self.bar.set_status("Le modele charge encore, patiente...", "#fab387")
             return
+        # Memoriser la fenetre cible MAINTENANT (avant que la barre prenne le focus)
+        self.injector.save_active_window()
         try:
             self.audio.start_recording()
             self._is_recording = True
             self.bar.set_recording(True)
         except RuntimeError as e:
             self._error_signal.emit(str(e))
+
+    def _cancel_recording(self):
+        """Annule l'enregistrement en cours sans transcrire."""
+        if not self._is_recording:
+            return
+        try:
+            self.audio.stop_recording()  # Jeter l'audio
+        except Exception as e:
+            print(f"[MAIN] Erreur stop audio: {e}", flush=True)
+        self._is_recording = False
+        self.bar.set_recording(False)
+        self.bar.set_status("Annule", "#fab387")
+        QTimer.singleShot(2000, lambda: self.bar.set_status("Pret"))
 
     def _stop_recording(self):
         audio_data = self.audio.stop_recording()
@@ -249,7 +269,10 @@ class AppController(QObject):
 
         corrected, modifications = self.learner.apply_corrections(text)
 
-        self.overlay.show_transcription(corrected, self.bar.geometry())
+        # La fenetre cible a deja ete memorisee dans _start_recording()
+        target_name = self.injector.get_target_info()
+
+        self.overlay.show_transcription(corrected, self.bar.geometry(), target_name)
 
         if modifications:
             mods = ", ".join(f'"{m["original"]}"->"{m["corrected"]}"' for m in modifications)
@@ -258,22 +281,68 @@ class AppController(QObject):
             self.bar.set_status("Verifie le texte", "#89b4fa")
 
     def _on_correction(self, original: str, corrected: str):
-        learned = self.learner.learn_from_edit(
-            original, corrected,
-            self._current_words, self._current_audio,
-            self.config["sample_rate"],
-        )
-        self.db.save_session(self._original_text, corrected, injected=False)
-        if learned:
-            names = ", ".join(f'"{l["corrected"]}"' for l in learned)
-            self.bar.set_status(f"J'ai appris: {names}", "#a6e3a1")
-            self.bar.show_tray_message(APP_NAME, f"J'ai appris {len(learned)} mot(s) !")
+        # Apprentissage en arriere-plan pour ne pas bloquer le collage
+        words = list(self._current_words)
+        audio = self._current_audio
+        sr = self.config["sample_rate"]
+        original_text = self._original_text
+
+        def _learn():
+            try:
+                learned = self.learner.learn_from_edit(
+                    original, corrected, words, audio, sr,
+                )
+                self.db.save_session(original_text, corrected, injected=False)
+                if learned:
+                    names = ", ".join(f'"{l["corrected"]}"' for l in learned)
+                    self._model_status.emit(f"J'ai appris: {names}")
+            except Exception:
+                pass
+
+        threading.Thread(target=_learn, daemon=True).start()
 
     def _on_inject(self, text: str):
-        self.injector.inject_text(text)
-        self.db.save_session(self._original_text, text, injected=True)
-        self.bar.set_status("Texte ecrit !", "#a6e3a1")
+        try:
+            target = self.injector.get_target_info()
+            print(f"[INJECT] Cible: '{target}' | Texte: '{text[:50]}'", flush=True)
+            self.injector.inject_text(text)
+            self.db.save_session(self._original_text, text, injected=True)
+            self._add_to_history(text, injected=True)
+            self.bar.set_status(f"Texte ecrit ! → {target[:30]}", "#a6e3a1")
+        except Exception as e:
+            print(f"[MAIN] Erreur injection: {e}", flush=True)
+            self.bar.set_status(f"Erreur: {e}", "#f38ba8")
         QTimer.singleShot(3000, lambda: self.bar.set_status("Pret"))
+
+    def _add_to_history(self, text: str, injected: bool = False):
+        """Ajoute une transcription a l'historique (max 4)."""
+        entry = {
+            "text": text,
+            "original": self._original_text,
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "injected": injected,
+        }
+        self._history.append(entry)
+        if len(self._history) > 4:
+            self._history = self._history[-4:]
+
+    def _show_history(self):
+        try:
+            dialog = HistoryDialog(self._history, parent=None)
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            dialog.paste_requested.connect(self._paste_from_history)
+            dialog.setModal(False)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self._current_dialog = dialog  # garder la reference
+        except Exception as e:
+            print(f"[MAIN] Erreur historique: {e}", flush=True)
+
+    def _paste_from_history(self, text: str):
+        """Colle un texte depuis l'historique."""
+        self.injector.save_active_window()
+        QTimer.singleShot(300, lambda: self.injector.inject_text(text))
 
     def _on_audio_level(self, level: float):
         pass
@@ -284,15 +353,33 @@ class AppController(QObject):
     # --- Dialogues ---
 
     def _show_dictionary(self):
-        dialog = DictionaryDialog(self.db)
-        dialog.exec()
+        try:
+            dialog = DictionaryDialog(self.db, parent=None)
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            dialog.setModal(False)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self._current_dialog = dialog
+        except Exception as e:
+            print(f"[MAIN] Erreur dictionnaire: {e}", flush=True)
 
     def _show_settings(self):
-        dialog = SettingsDialog()
-        if dialog.exec():
-            self.bar.show_tray_message(
-                APP_NAME, "Redemarrez pour appliquer certains changements."
+        try:
+            dialog = SettingsDialog(parent=None)
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            dialog.finished.connect(
+                lambda result: self.bar.show_tray_message(
+                    APP_NAME, "Redemarrez pour appliquer certains changements."
+                ) if result else None
             )
+            dialog.setModal(False)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self._current_dialog = dialog
+        except Exception as e:
+            print(f"[MAIN] Erreur settings: {e}", flush=True)
 
     # --- Sync ---
 
@@ -318,6 +405,7 @@ class AppController(QObject):
             pass
 
     def _quit(self):
+        self.injector.stop()
         try:
             self.sync.sync()
         except Exception:

@@ -16,6 +16,11 @@ class DictionaryDialog(QDialog):
         super().__init__(parent)
         self.db = db
         self.setWindowTitle("VoixClaire - Dictionnaire personnel")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
         self.setMinimumSize(700, 500)
         self._setup_ui()
         self._load_data()

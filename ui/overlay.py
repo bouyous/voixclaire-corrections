@@ -145,6 +145,16 @@ class TranscriptionOverlay(QWidget):
         self.text_edit.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.text_edit)
 
+        # Fenetre cible
+        self.target_label = QLabel("")
+        self.target_label.setObjectName("hint_label")
+        self.target_label.setStyleSheet(
+            "font-size: 11px; color: #94e2d5; background-color: #313244; "
+            "border-radius: 6px; padding: 4px 8px;"
+        )
+        self.target_label.setWordWrap(True)
+        layout.addWidget(self.target_label)
+
         # Indication
         self.hint = QLabel("")
         self.hint.setObjectName("hint_label")
@@ -173,10 +183,11 @@ class TranscriptionOverlay(QWidget):
         btn_layout.addWidget(self.btn_cancel)
         layout.addLayout(btn_layout)
 
-    def show_transcription(self, text: str, bar_geometry=None):
+    def show_transcription(self, text: str, bar_geometry=None, target_window: str = ""):
         """Affiche la transcription pres de la barre flottante.
 
         bar_geometry: QRect de la barre, pour savoir ou se placer.
+        target_window: nom de la fenetre ou le texte sera colle.
         """
         self.original_text = text
 
@@ -187,6 +198,15 @@ class TranscriptionOverlay(QWidget):
         self.btn_correct.setVisible(False)
         self.hint.setText("Clique dans le texte pour le corriger, ou clique OK")
         self.hint.setStyleSheet("font-size: 11px; color: #a6adc8;")
+
+        # Afficher la fenetre cible
+        if target_window:
+            # Raccourcir si trop long
+            display = target_window if len(target_window) <= 50 else target_window[:47] + "..."
+            self.target_label.setText(f"→ Sera colle dans : {display}")
+            self.target_label.setVisible(True)
+        else:
+            self.target_label.setVisible(False)
 
         # Positionner la popup
         screen = QApplication.primaryScreen().geometry()
@@ -240,21 +260,26 @@ class TranscriptionOverlay(QWidget):
 
     def _on_inject(self):
         text = self.text_edit.toPlainText().strip()
-        if text != self.original_text:
-            self.text_validated.emit(self.original_text, text)
-        # Cacher d'abord, puis injecter apres un delai
-        # pour laisser la fenetre cible reprendre le focus
+        modified = text != self.original_text
+        # Cacher d'abord, coller, puis apprendre apres
         self.hide()
-        QTimer.singleShot(300, lambda: self.text_injected.emit(text))
+        QTimer.singleShot(200, lambda: self._do_inject_then_learn(text, modified))
 
     def _on_correct(self):
         corrected = self.text_edit.toPlainText().strip()
-        self.text_validated.emit(self.original_text, corrected)
         self.hide()
-        QTimer.singleShot(300, lambda: self.text_injected.emit(corrected))
+        QTimer.singleShot(200, lambda: self._do_inject_then_learn(corrected, True))
+
+    def _do_inject_then_learn(self, text, was_modified):
+        """Colle d'abord, puis envoie le signal d'apprentissage."""
+        self.text_injected.emit(text)
+        if was_modified:
+            # Apprendre APRES le collage (decale pour ne pas bloquer)
+            QTimer.singleShot(100, lambda: self.text_validated.emit(self.original_text, text))
 
     def _on_cancel(self):
         self.hide()
+        self.clearFocus()
         self.cancelled.emit()
 
     def keyPressEvent(self, event):
