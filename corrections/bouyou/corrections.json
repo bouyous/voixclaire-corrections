@@ -36,6 +36,12 @@
     "confidence": 1.0
   },
   {
+    "wrong_text": "buyu.",
+    "correct_text": "Bouyou.",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
     "wrong_text": "tu",
     "correct_text": "je",
     "count": 1,
