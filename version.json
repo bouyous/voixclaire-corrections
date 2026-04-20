@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
-  "date": "2026-04-16",
-  "changes": "Fix import Qt manquant - Historique et Mots appris fonctionnent a nouveau"
+  "version": "1.2.0",
+  "date": "2026-04-20",
+  "changes": "Fix dictionnaire: suppression reelle, anti-boucle correction inverse, affichage phrases"
 }

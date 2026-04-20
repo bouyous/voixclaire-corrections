@@ -115,11 +115,8 @@ class AdaptiveLearner:
                     self.db.add_phrase_correction(orig_chunk, corr_chunk)
                     learned.append({"original": orig_chunk, "corrected": corr_chunk})
 
-        # Sauver aussi la correction de phrase complete si elle est differente
-        orig_full = " ".join(orig_words)
-        corr_full = " ".join(corr_words)
-        if orig_full != corr_full:
-            self.db.add_phrase_correction(orig_full, corr_full)
+        # Ne PAS sauver la phrase complete en plus — cela cree des corrections
+        # parasites impossibles a supprimer depuis le dictionnaire
 
         return learned
 

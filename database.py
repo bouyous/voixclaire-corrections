@@ -123,6 +123,12 @@ class CorrectionDB:
 
         conn = get_connection()
         try:
+            # Supprimer la correction inverse si elle existe (evite les boucles)
+            conn.execute(
+                "DELETE FROM corrections WHERE wrong_text=? AND correct_text=?",
+                (correct_clean.lower(), wrong_lower)
+            )
+
             # Upsert: incrementer le compteur si la correction existe deja
             conn.execute("""
                 INSERT INTO corrections (wrong_text, correct_text, count)
@@ -153,9 +159,36 @@ class CorrectionDB:
         self._load_cache()
 
     def delete_correction(self, correction_id: int):
-        """Supprime une correction."""
+        """Supprime une correction mot."""
         conn = get_connection()
         conn.execute("DELETE FROM corrections WHERE id=?", (correction_id,))
+        conn.commit()
+        conn.close()
+        self._load_cache()
+
+    def get_all_phrase_corrections(self) -> list[dict]:
+        """Retourne toutes les corrections de phrases."""
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, wrong_phrase, correct_phrase, count, created_at "
+            "FROM phrase_corrections ORDER BY count DESC"
+        ).fetchall()
+        result = [dict(row) for row in rows]
+        conn.close()
+        return result
+
+    def delete_phrase_correction(self, phrase_id: int):
+        """Supprime une correction de phrase."""
+        conn = get_connection()
+        conn.execute("DELETE FROM phrase_corrections WHERE id=?", (phrase_id,))
+        conn.commit()
+        conn.close()
+
+    def delete_all_corrections(self):
+        """Supprime TOUTES les corrections (mots + phrases). Utile en cas de bug."""
+        conn = get_connection()
+        conn.execute("DELETE FROM corrections")
+        conn.execute("DELETE FROM phrase_corrections")
         conn.commit()
         conn.close()
         self._load_cache()
