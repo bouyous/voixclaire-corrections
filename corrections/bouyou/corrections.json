@@ -48,6 +48,12 @@
     "confidence": 1.0
   },
   {
+    "wrong_text": "au",
+    "correct_text": "en",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
     "wrong_text": "tu",
     "correct_text": "je",
     "count": 1,
