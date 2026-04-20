@@ -1,5 +1,11 @@
 [
   {
+    "wrong_text": "je",
+    "correct_text": "tu",
+    "count": 2,
+    "confidence": 1.0
+  },
+  {
     "wrong_text": "bouillou.",
     "correct_text": "Bouyou.",
     "count": 1,
@@ -44,12 +50,6 @@
   {
     "wrong_text": "tu",
     "correct_text": "je",
-    "count": 1,
-    "confidence": 1.0
-  },
-  {
-    "wrong_text": "je",
-    "correct_text": "tu",
     "count": 1,
     "confidence": 1.0
   }
