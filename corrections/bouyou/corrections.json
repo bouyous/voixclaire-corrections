@@ -54,6 +54,18 @@
     "confidence": 1.0
   },
   {
+    "wrong_text": "pépal,",
+    "correct_text": "paypal,",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
+    "wrong_text": "mhz,",
+    "correct_text": "Mo,",
+    "count": 1,
+    "confidence": 1.0
+  },
+  {
     "wrong_text": "tu",
     "correct_text": "je",
     "count": 1,

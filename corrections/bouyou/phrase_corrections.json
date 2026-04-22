@@ -48,5 +48,15 @@
     "wrong_phrase": "je ne suis pas capable de le vérifier là puisque tu as mis une valeur qui se met dans le cli. ce qui serait bien, c'est que dans l'onglet cli, il n'y ait pas d'explication et que ce qui soit ce qu'on peut copier-coller, ça soit uniquement les valeurs à mettre dans le cli, et pas les explications. laisse la partie d'explications au-dessus, mais fais en sorte qu'elle ne soit pas copier-coller lors de l'import. tu as de bien le save en bas. ensuite, dans le diagnostic, c'est très bien ce que tu as fait, mais dans ce cas, il faudrait mettre, tu vois, tu as admettre trois corrections suggérées, tu les réduis un petit peu et tu mets un onglet valeur brut et un onglet valeur simplifiée. et donc tu dis, le slider de tel endroit doit aller à 1, 0, 2 par exemple. comme ça, l'utilisateur a le choix de régler sa machine avec le slider ou avec les chiffres. jusqu'à présent, tu n'as pas trop parlé des filtres. j'aimerais vraiment que les filtres apparaissent dans le diagnostic, dans les réglages conseillés. c'est ce qui me semble être le plus important dans un tune. c'est les filtres. les pays des viennes en second plan, je pense.",
     "correct_phrase": "Je ne suis pas capable de le vérifier là puisque tu as mis une valeur qui se met dans le CLI. Ce qui serait bien, c'est que dans l'onglet CLI, il n'y ait pas d'explication et que ce qui soit ce qu'on peut copier-coller, ça soit uniquement les valeurs à mettre dans le CLI, et pas les explications. Laisse la partie d'explications au-dessus, mais fais en sorte qu'elle ne soit pas copier-coller lors de l'import. Tu as de bien le save en bas. Ensuite, dans le diagnostic, c'est très bien ce que tu as fait, mais dans ce cas, il faudrait mettre, tu vois, tu as admettre trois corrections suggérées, tu les réduis un petit peu et tu mets un onglet valeur brut et un onglet valeur simplifiée. Et donc tu dis, le slider de tel endroit doit aller à 1, 0, 2 par exemple. Comme ça, l'utilisateur a le choix de régler sa machine avec le slider ou avec les chiffres. Jusqu'à présent, tu n'as pas trop parlé des filtres. J'aimerais vraiment que les filtres apparaissent dans le diagnostic, dans les réglages conseillés. C'est ce qui me semble être le plus important dans un tune. C'est les filtres. Les pid en second plan, je pense.",
     "count": 1
+  },
+  {
+    "wrong_phrase": "j'aurais qu'est pour à",
+    "correct_phrase": "Joket poura",
+    "count": 1
+  },
+  {
+    "wrong_phrase": "pormac",
+    "correct_phrase": "Pour mac",
+    "count": 1
   }
 ]
