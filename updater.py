@@ -33,6 +33,7 @@ UI_FILES = [
     "ui/settings_dialog.py",
     "ui/first_run.py",
     "ui/history_dialog.py",
+    "ui/training_dialog.py",
 ]
 
 ALL_FILES = APP_FILES + UI_FILES

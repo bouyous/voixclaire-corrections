@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "date": "2026-05-10",
-  "changes": "Reconnaissance medium par defaut, apprentissage prudent des mots courts, contexte de mots appris, correction vocale et build VoixClaire.exe"
+  "changes": "Ajout d'un entrainement initial guide pour apprendre la voix avec des phrases cles, relancable depuis la barre VoixClaire"
 }

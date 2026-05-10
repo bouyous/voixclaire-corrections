@@ -21,6 +21,7 @@ from ui.overlay import TranscriptionOverlay
 from ui.dictionary_dialog import DictionaryDialog
 from ui.settings_dialog import SettingsDialog
 from ui.history_dialog import HistoryDialog
+from ui.training_dialog import TrainingDialog
 from datetime import datetime
 
 
@@ -33,6 +34,7 @@ class AppController(QObject):
     """
 
     _transcription_ready = pyqtSignal(str, list, object)
+    _training_transcription_ready = pyqtSignal(str, list, object)
     _model_status = pyqtSignal(str)
     _audio_level = pyqtSignal(float)
     _error_signal = pyqtSignal(str)
@@ -67,6 +69,9 @@ class AppController(QObject):
         self._current_words = []
         self._original_text = ""
         self._last_raw_text = ""
+        self._training_dialog = None
+        self._training_recording = False
+        self._training_expected = ""
         self._history = []  # Liste des 4 dernieres transcriptions
 
         # Lister les profils et les micros
@@ -121,6 +126,7 @@ class AppController(QObject):
         self.bar.cancel_recording.connect(self._cancel_recording)
         self.bar.dictionary_clicked.connect(self._show_dictionary)
         self.bar.history_clicked.connect(self._show_history)
+        self.bar.training_clicked.connect(self._show_training)
         self.bar.settings_clicked.connect(self._show_settings)
         self.bar.quit_clicked.connect(self._quit)
         self.bar.sync_clicked.connect(self._manual_sync)
@@ -133,6 +139,7 @@ class AppController(QObject):
 
         # Signaux thread-safe
         self._transcription_ready.connect(self._on_transcription)
+        self._training_transcription_ready.connect(self._on_training_transcription)
         self._model_status.connect(self._on_model_status)
         self._audio_level.connect(self._on_audio_level)
         self._error_signal.connect(self._on_error)
@@ -203,6 +210,8 @@ class AppController(QObject):
             self.bar.show_tray_message(
                 APP_NAME, "Pret ! Clique sur le micro pour parler."
             )
+            if not self.config.get("training_completed", False):
+                QTimer.singleShot(700, self._show_training)
         elif status.startswith("Sync"):
             self.bar.set_status(status, "#a6e3a1")
         else:
@@ -211,6 +220,9 @@ class AppController(QObject):
     # --- Enregistrement ---
 
     def _toggle_recording(self):
+        if self._training_recording:
+            self._stop_training_recording()
+            return
         if self._is_recording:
             self._stop_recording()
         else:
@@ -263,6 +275,122 @@ class AppController(QObject):
                 self._error_signal.emit(f"Erreur: {e}")
 
         threading.Thread(target=_transcribe, daemon=True).start()
+
+    # --- Entrainement guide ---
+
+    def _show_training(self):
+        try:
+            if self._training_dialog and self._training_dialog.isVisible():
+                self._training_dialog.raise_()
+                self._training_dialog.activateWindow()
+                return
+            dialog = TrainingDialog(parent=None)
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            dialog.record_requested.connect(self._toggle_training_recording)
+            dialog.save_requested.connect(self._on_training_save)
+            dialog.completed.connect(self._on_training_completed)
+            dialog.destroyed.connect(self._on_training_dialog_destroyed)
+            dialog.setModal(False)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            self._training_dialog = dialog
+        except Exception as e:
+            print(f"[MAIN] Erreur entrainement: {e}", flush=True)
+
+    def _on_training_dialog_destroyed(self):
+        self._training_dialog = None
+        if self._training_recording:
+            try:
+                self.audio.stop_recording()
+            except Exception:
+                pass
+            self._training_recording = False
+            self.bar.set_recording(False)
+
+    def _toggle_training_recording(self, expected: str):
+        if self._training_recording:
+            self._stop_training_recording()
+        else:
+            self._start_training_recording(expected)
+
+    def _start_training_recording(self, expected: str):
+        if not self.transcriber.is_loaded:
+            self.bar.set_status("Le modele charge encore, patiente...", "#fab387")
+            return
+        if self._is_recording:
+            self.bar.set_status("Termine d'abord la dictee en cours", "#fab387")
+            return
+        self._training_expected = expected
+        try:
+            self.audio.start_recording()
+            self._training_recording = True
+            self.bar.set_recording(True)
+            self.bar.set_status("Entrainement: je t'ecoute...", "#f38ba8")
+            if self._training_dialog:
+                self._training_dialog.recording_started()
+        except RuntimeError as e:
+            self._error_signal.emit(str(e))
+
+    def _stop_training_recording(self):
+        audio_data = self.audio.stop_recording()
+        self._training_recording = False
+        self.bar.set_recording(False)
+        if self._training_dialog:
+            self._training_dialog.recording_stopped()
+
+        if audio_data is None or len(audio_data) < self.config["sample_rate"] * 0.3:
+            if self._training_dialog:
+                self._training_dialog.show_error("Trop court, reessaie.")
+            self.bar.set_status("Trop court, reessaie !", "#fab387")
+            return
+
+        self.bar.set_status("Entrainement: analyse...", "#89b4fa")
+
+        def _transcribe():
+            try:
+                result = self.transcriber.transcribe(audio_data)
+                self._training_transcription_ready.emit(
+                    result["text"], result["words"], audio_data
+                )
+            except Exception as e:
+                self._error_signal.emit(f"Erreur entrainement: {e}")
+
+        threading.Thread(target=_transcribe, daemon=True).start()
+
+    def _on_training_transcription(self, text: str, words: list, audio_data):
+        self._current_audio = audio_data
+        self._current_words = words
+        self._original_text = text
+        if self._training_dialog:
+            self._training_dialog.show_result(text)
+        self.bar.set_status("Entrainement: verifie la phrase", "#89b4fa")
+
+    def _on_training_save(self, original: str, corrected: str):
+        self._learn_training_async(original, corrected, list(self._current_words), self._current_audio)
+
+    def _learn_training_async(self, original: str, corrected: str, words: list, audio):
+        words = list(words)
+        sr = self.config["sample_rate"]
+
+        def _learn():
+            try:
+                learned = self.learner.learn_from_edit(original, corrected, words, audio, sr)
+                self.db.save_session(original, corrected, injected=False)
+                self.transcriber.set_context_terms(self.db.get_prompt_terms())
+                if learned:
+                    self._model_status.emit("Entrainement enregistre")
+                else:
+                    self._model_status.emit("Phrase d'entrainement enregistree")
+            except Exception as e:
+                self._error_signal.emit(f"Entrainement: {e}")
+
+        threading.Thread(target=_learn, daemon=True).start()
+
+    def _on_training_completed(self):
+        self.config["training_completed"] = True
+        save_config(self.config)
+        self.bar.set_status("Entrainement termine", "#a6e3a1")
 
     # --- Transcription ---
 

@@ -17,6 +17,8 @@ VoixClaire est un logiciel de dictee vocale qui **apprend** a comprendre la voix
 
 **Correction vocale** : apres une mauvaise transcription, on peut aussi redicter une correction en disant par exemple : "stop, tu ne m'as pas compris, je voulais dire ...".
 
+**Entrainement guide** : au premier demarrage d'un profil, VoixClaire propose quelques phrases cles a lire. On peut aussi relancer cet entrainement depuis le bouton `Entrainement` de la barre.
+
 ## Installation portable (sans droits admin)
 
 **Aucune installation necessaire.** Le dossier fonctionne tel quel sur n'importe quel PC Windows 64 bits avec un microphone.

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 APP_NAME = "VoixClaire"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 # Determiner le repertoire de donnees:
 # - Mode portable (cle USB): les donnees sont DANS le dossier de l'app
@@ -93,6 +93,7 @@ DEFAULTS = {
     "compute_type": "int8",
     "user_name": "",
     "bar_position": "top",
+    "training_completed": False,
 }
 
 

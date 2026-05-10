@@ -162,6 +162,7 @@ class FloatingBar(QWidget):
     record_clicked = pyqtSignal()
     dictionary_clicked = pyqtSignal()
     history_clicked = pyqtSignal()
+    training_clicked = pyqtSignal()
     settings_clicked = pyqtSignal()
     quit_clicked = pyqtSignal()
     sync_clicked = pyqtSignal()
@@ -193,7 +194,7 @@ class FloatingBar(QWidget):
         self.setStyleSheet(BAR_STYLE)
 
         screen = QApplication.primaryScreen().geometry()
-        bar_width = min(800, screen.width() - 100)
+        bar_width = min(900, screen.width() - 80)
         bar_height = 56
         x = (screen.width() - bar_width) // 2
         self.setGeometry(x, 0, bar_width, bar_height)
@@ -260,6 +261,12 @@ class FloatingBar(QWidget):
         btn_history.setToolTip("Derniers textes dictes")
         btn_history.clicked.connect(self.history_clicked.emit)
         layout.addWidget(btn_history)
+
+        btn_training = QPushButton("Entrainement")
+        btn_training.setObjectName("small_btn")
+        btn_training.setToolTip("Apprendre la voix avec quelques phrases")
+        btn_training.clicked.connect(self.training_clicked.emit)
+        layout.addWidget(btn_training)
 
         btn_dict = QPushButton("Mots appris")
         btn_dict.setObjectName("small_btn")
@@ -362,6 +369,10 @@ class FloatingBar(QWidget):
         action_dict = QAction("Mots appris", self)
         action_dict.triggered.connect(self.dictionary_clicked.emit)
         menu.addAction(action_dict)
+
+        action_training = QAction("Entrainement", self)
+        action_training.triggered.connect(self.training_clicked.emit)
+        menu.addAction(action_training)
 
         action_settings = QAction("Parametres", self)
         action_settings.triggered.connect(self.settings_clicked.emit)
