@@ -3,9 +3,31 @@
 import sqlite3
 import json
 import numpy as np
+import re
 from pathlib import Path
 from datetime import datetime
 import config
+
+SHORT_AMBIGUOUS_WORDS = {
+    "a", "as", "au", "aux", "ce", "ces", "c", "d", "de", "des", "du",
+    "en", "et", "est", "es", "il", "ils", "j", "je", "l", "la", "le",
+    "les", "m", "ma", "me", "mes", "mon", "ne", "on", "ou", "où",
+    "s", "sa", "se", "ses", "son", "ta", "te", "tes", "ton", "tu",
+    "un", "une", "y",
+}
+
+
+def normalize_text(text: str) -> str:
+    """Normalise un texte pour les recherches sans perdre l'original sauvegarde."""
+    text = text.strip().lower()
+    text = re.sub(r"^[^\wÀ-ÿ']+|[^\wÀ-ÿ']+$", "", text, flags=re.UNICODE)
+    return text
+
+
+def is_ambiguous_word(text: str) -> bool:
+    """Repere les mots courts qui provoquent facilement des corrections parasites."""
+    normalized = normalize_text(text)
+    return len(normalized) <= 3 or normalized in SHORT_AMBIGUOUS_WORDS
 
 
 def get_connection() -> sqlite3.Connection:
@@ -33,6 +55,9 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_corrections_wrong
             ON corrections(wrong_text);
+
+        CREATE INDEX IF NOT EXISTS idx_corrections_score
+            ON corrections(wrong_text, count, confidence);
 
         CREATE TABLE IF NOT EXISTS audio_samples (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +107,7 @@ class CorrectionDB:
         ).fetchall()
         self._cache = {}
         for row in rows:
-            wrong = row["wrong_text"].lower()
+            wrong = normalize_text(row["wrong_text"])
             if wrong not in self._cache:
                 self._cache[wrong] = []
             self._cache[wrong].append({
@@ -93,14 +118,48 @@ class CorrectionDB:
         conn.close()
 
     def get_correction(self, wrong_text: str) -> str | None:
-        """Retourne la meilleure correction pour un mot/phrase."""
-        wrong_lower = wrong_text.lower().strip()
+        """Retourne la meilleure correction auto-applicable pour un mot."""
+        candidate = self.get_correction_candidate(wrong_text)
+        return candidate["correct"] if candidate else None
+
+    def get_correction_candidate(self, wrong_text: str) -> dict | None:
+        """
+        Retourne la meilleure correction si elle est assez fiable.
+
+        Les mots courts/frequents ("je", "tu", "jeu"...) demandent plus de
+        preuves avant d'etre appliques automatiquement, sinon une correction
+        utile finit par casser toute la dictee.
+        """
+        wrong_lower = normalize_text(wrong_text)
         candidates = self._cache.get(wrong_lower, [])
         if not candidates:
             return None
-        # Prendre la correction la plus frequente
-        best = max(candidates, key=lambda c: c["count"] * c["confidence"])
-        return best["correct"]
+
+        ranked = sorted(
+            candidates,
+            key=lambda c: (c["count"] * c["confidence"], c["count"]),
+            reverse=True,
+        )
+        best = ranked[0]
+        score = best["count"] * best["confidence"]
+        competing_score = ranked[1]["count"] * ranked[1]["confidence"] if len(ranked) > 1 else 0
+        ambiguous = is_ambiguous_word(wrong_lower) or is_ambiguous_word(best["correct"])
+
+        if ambiguous:
+            if best["count"] < 3 or best["confidence"] < 0.85:
+                return None
+            if competing_score and score < competing_score * 2:
+                return None
+        elif best["count"] < 2 and best["confidence"] < 0.8:
+            return None
+
+        return {
+            "wrong": wrong_lower,
+            "correct": best["correct"],
+            "count": best["count"],
+            "confidence": best["confidence"],
+            "ambiguous": ambiguous,
+        }
 
     def get_all_corrections(self) -> list[dict]:
         """Retourne toutes les corrections."""
@@ -116,7 +175,7 @@ class CorrectionDB:
     def add_correction(self, wrong_text: str, correct_text: str,
                        mfcc_features: np.ndarray | None = None):
         """Ajoute ou met a jour une correction."""
-        wrong_lower = wrong_text.lower().strip()
+        wrong_lower = normalize_text(wrong_text)
         correct_clean = correct_text.strip()
         if wrong_lower == correct_clean.lower():
             return
@@ -195,6 +254,10 @@ class CorrectionDB:
 
     def add_phrase_correction(self, wrong_phrase: str, correct_phrase: str):
         """Ajoute une correction au niveau phrase."""
+        wrong_phrase = wrong_phrase.lower().strip()
+        correct_phrase = correct_phrase.strip()
+        if not wrong_phrase or not correct_phrase or wrong_phrase == correct_phrase.lower():
+            return
         conn = get_connection()
         conn.execute("""
             INSERT INTO phrase_corrections (wrong_phrase, correct_phrase)
@@ -204,8 +267,7 @@ class CorrectionDB:
                 correct_phrase = ?,
                 count = count + 1,
                 updated_at = datetime('now','localtime')
-        """, (wrong_phrase.lower().strip(), correct_phrase.strip(),
-              correct_phrase.strip()))
+        """, (wrong_phrase, correct_phrase, correct_phrase))
         conn.commit()
         conn.close()
 
@@ -219,6 +281,27 @@ class CorrectionDB:
         ).fetchone()
         conn.close()
         return row["correct_phrase"] if row else None
+
+    def get_prompt_terms(self, limit: int = 80) -> list[str]:
+        """Mots fiables a donner en contexte au moteur de transcription."""
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT correct_text, count, confidence FROM corrections "
+            "WHERE count >= 2 AND confidence >= 0.8 "
+            "ORDER BY count DESC, confidence DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        conn.close()
+
+        terms = []
+        seen = set()
+        for row in rows:
+            term = row["correct_text"].strip()
+            key = normalize_text(term)
+            if key and key not in seen:
+                terms.append(term)
+                seen.add(key)
+        return terms
 
     def save_session(self, original: str, corrected: str, injected: bool = False):
         """Sauvegarde une session de dictee."""

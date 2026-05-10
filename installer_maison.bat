@@ -58,7 +58,7 @@ copy /y "%~dp0voixclaire.ico" "%INSTALL_DIR%\" >nul 2>nul
 
 REM === 5. Modele ===
 echo   [5/6] Telechargement du modele vocal (~500Mo)...
-"%INSTALL_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('         OK !')"
+"%INSTALL_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8'); print('         OK !')"
 
 REM === 6. Raccourcis ===
 echo   [6/6] Creation des raccourcis...

@@ -117,13 +117,13 @@ class SettingsDialog(QDialog):
         model_layout = QFormLayout(model_group)
 
         self.model_combo = QComboBox()
-        self.model_combo.addItems(["tiny", "base", "small", "medium"])
-        self.model_combo.setCurrentText(self.config.get("whisper_model", "small"))
+        self.model_combo.addItems(["tiny", "base", "small", "medium", "large-v3"])
+        self.model_combo.setCurrentText(self.config.get("whisper_model", "medium"))
         model_layout.addRow("Modele :", self.model_combo)
 
         info = QLabel(
-            "tiny (~75Mo, rapide) | base (~150Mo) | "
-            "small (~500Mo, recommande) | medium (~1.5Go, precis)"
+            "tiny/base = rapide | small = leger | medium = recommande "
+            "pour mieux comprendre | large-v3 = tres precis mais lent"
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #a6adc8; font-size: 11px;")

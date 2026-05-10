@@ -28,7 +28,7 @@ echo.
 echo   Dependances installees !
 echo.
 echo   Telechargement du modele vocal (~500Mo, premiere fois)...
-python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('   Modele pret !')"
+python -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8'); print('   Modele pret !')"
 
 echo.
 echo   =================================

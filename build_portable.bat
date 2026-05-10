@@ -52,8 +52,8 @@ for %%f in (main.py config.py database.py audio_engine.py transcriber.py adaptiv
 copy /y "%~dp0ui\*.py" "%OUT_DIR%\app\ui\" >nul
 copy /y "%~dp0voixclaire.ico" "%OUT_DIR%\" >nul 2>nul
 
-echo   [6/7] Telechargement du modele vocal (~500Mo)...
-"%OUT_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8'); print('         OK !')"
+echo   [6/7] Telechargement du modele vocal (~1.5Go)...
+"%OUT_DIR%\python\python.exe" -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8'); print('         OK !')"
 
 echo   [7/7] Mise en forme du dossier...
 

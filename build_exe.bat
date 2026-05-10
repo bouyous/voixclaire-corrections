@@ -13,7 +13,6 @@ pyinstaller --noconfirm --onedir --windowed ^
     --add-data "ui;ui" ^
     --hidden-import "faster_whisper" ^
     --hidden-import "sounddevice" ^
-    --hidden-import "sounddevice._sounddevice" ^
     --hidden-import "librosa" ^
     --hidden-import "sklearn" ^
     --hidden-import "sklearn.utils._cython_blas" ^

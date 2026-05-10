@@ -1,8 +1,27 @@
 """Systeme d'apprentissage adaptatif pour les corrections vocales."""
 
 import difflib
+import re
 import numpy as np
-from database import CorrectionDB
+from database import CorrectionDB, normalize_text
+
+
+_WORD_RE = re.compile(r"^([^\wÀ-ÿ']*)([\wÀ-ÿ']+)([^\wÀ-ÿ']*)$", re.UNICODE)
+
+
+def _apply_word_shape(original: str, correction: str) -> str:
+    """Garde ponctuation et majuscule simple autour d'une correction."""
+    match = _WORD_RE.match(original)
+    if not match:
+        return correction
+
+    prefix, core, suffix = match.groups()
+    corrected = correction
+    if core.isupper():
+        corrected = correction.upper()
+    elif core[:1].isupper():
+        corrected = correction[:1].upper() + correction[1:]
+    return f"{prefix}{corrected}{suffix}"
 
 
 class AdaptiveLearner:
@@ -39,15 +58,18 @@ class AdaptiveLearner:
         modifications = []
 
         for i, word in enumerate(words):
-            correction = self.db.get_correction(word)
-            if correction:
+            candidate = self.db.get_correction_candidate(word)
+            if candidate:
+                correction = _apply_word_shape(word, candidate["correct"])
                 corrected_words.append(correction)
-                if correction.lower() != word.lower():
+                if normalize_text(correction) != normalize_text(word):
                     modifications.append({
                         "original": word,
                         "corrected": correction,
                         "position": i,
                         "type": "word",
+                        "safe": not candidate["ambiguous"],
+                        "count": candidate["count"],
                     })
             else:
                 corrected_words.append(word)
@@ -82,14 +104,15 @@ class AdaptiveLearner:
         """Apprend quand les mots sont alignes 1-a-1."""
         learned = []
         for i, (orig, corr) in enumerate(zip(orig_words, corr_words)):
-            if orig.lower() != corr.lower():
+            if normalize_text(orig) != normalize_text(corr):
                 # Extraire l'audio du mot si disponible
                 mfcc = None
                 if audio is not None and word_infos and i < len(word_infos):
                     mfcc = self._extract_mfcc(audio, word_infos[i], sample_rate)
 
-                self.db.add_correction(orig, corr, mfcc)
-                learned.append({"original": orig, "corrected": corr})
+                if self._should_learn_word(orig, corr):
+                    self.db.add_correction(orig, corr, mfcc)
+                    learned.append({"original": orig, "corrected": corr})
         return learned
 
     def _learn_with_diff(self, orig_words, corr_words, word_infos, audio, sample_rate):
@@ -108,17 +131,31 @@ class AdaptiveLearner:
                     mfcc = None
                     if audio is not None and word_infos and i1 < len(word_infos):
                         mfcc = self._extract_mfcc(audio, word_infos[i1], sample_rate)
-                    self.db.add_correction(orig_words[i1], corr_words[j1], mfcc)
-                    learned.append({"original": orig_words[i1], "corrected": corr_words[j1]})
+                    if self._should_learn_word(orig_words[i1], corr_words[j1]):
+                        self.db.add_correction(orig_words[i1], corr_words[j1], mfcc)
+                        learned.append({"original": orig_words[i1], "corrected": corr_words[j1]})
                 else:
-                    # Remplacement multi-mots: sauver comme correction de phrase
-                    self.db.add_phrase_correction(orig_chunk, corr_chunk)
-                    learned.append({"original": orig_chunk, "corrected": corr_chunk})
+                    # Remplacement multi-mots: seulement si le bloc est court.
+                    # Les grandes phrases corrigees mot par mot ne doivent pas
+                    # devenir des corrections automatiques impossibles a predire.
+                    if 1 < (i2 - i1) <= 4 and 1 < (j2 - j1) <= 5:
+                        self.db.add_phrase_correction(orig_chunk, corr_chunk)
+                        learned.append({"original": orig_chunk, "corrected": corr_chunk})
 
         # Ne PAS sauver la phrase complete en plus — cela cree des corrections
         # parasites impossibles a supprimer depuis le dictionnaire
 
         return learned
+
+    def _should_learn_word(self, original: str, corrected: str) -> bool:
+        """Evite d'apprendre les diffs qui ne sont que ponctuation/casse."""
+        orig = normalize_text(original)
+        corr = normalize_text(corrected)
+        if not orig or not corr or orig == corr:
+            return False
+        if len(orig) == 1 and len(corr) == 1:
+            return False
+        return True
 
     def _extract_mfcc(self, audio: np.ndarray, word_info: dict,
                       sample_rate: int) -> np.ndarray | None:

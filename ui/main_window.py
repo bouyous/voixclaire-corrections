@@ -1,6 +1,7 @@
 """Controleur principal - lie la barre flottante, l'overlay et le moteur."""
 
 import threading
+import re
 import numpy as np
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
@@ -56,6 +57,7 @@ class AppController(QObject):
             beam_size=self.config["beam_size"],
         )
         self.learner = AdaptiveLearner(self.db)
+        self.transcriber.set_context_terms(self.db.get_prompt_terms())
         self.injector = TextInjector()
         self.sync = GitHubSync(GITHUB_REPO, self.db, user_name)
 
@@ -64,6 +66,7 @@ class AppController(QObject):
         self._current_audio = None
         self._current_words = []
         self._original_text = ""
+        self._last_raw_text = ""
         self._history = []  # Liste des 4 dernieres transcriptions
 
         # Lister les profils et les micros
@@ -157,6 +160,7 @@ class AppController(QObject):
         # Recreer la base et le learner pour le nouveau profil
         self.db = CorrectionDB()
         self.learner = AdaptiveLearner(self.db)
+        self.transcriber.set_context_terms(self.db.get_prompt_terms())
         self.sync = GitHubSync(GITHUB_REPO, self.db, profile_id)
 
         display_name = profile_id.replace('_', ' ').title()
@@ -267,7 +271,17 @@ class AppController(QObject):
         self._current_words = words
         self._original_text = text
 
+        voice_correction = self._extract_voice_correction(text)
+        if voice_correction and self._last_raw_text:
+            self.overlay.show_transcription(
+                voice_correction, self.bar.geometry(), self.injector.get_target_info()
+            )
+            self.bar.set_status("Correction vocale recue", "#a6e3a1")
+            self._learn_async(self._last_raw_text, voice_correction, [], None)
+            return
+
         corrected, modifications = self.learner.apply_corrections(text)
+        self._last_raw_text = text
 
         # La fenetre cible a deja ete memorisee dans _start_recording()
         target_name = self.injector.get_target_info()
@@ -282,8 +296,10 @@ class AppController(QObject):
 
     def _on_correction(self, original: str, corrected: str):
         # Apprentissage en arriere-plan pour ne pas bloquer le collage
-        words = list(self._current_words)
-        audio = self._current_audio
+        self._learn_async(original, corrected, list(self._current_words), self._current_audio)
+
+    def _learn_async(self, original: str, corrected: str, words: list, audio):
+        words = list(words)
         sr = self.config["sample_rate"]
         original_text = self._original_text
 
@@ -295,11 +311,32 @@ class AppController(QObject):
                 self.db.save_session(original_text, corrected, injected=False)
                 if learned:
                     names = ", ".join(f'"{l["corrected"]}"' for l in learned)
+                    self.transcriber.set_context_terms(self.db.get_prompt_terms())
                     self._model_status.emit(f"J'ai appris: {names}")
             except Exception:
                 pass
 
         threading.Thread(target=_learn, daemon=True).start()
+
+    @staticmethod
+    def _extract_voice_correction(text: str) -> str:
+        """
+        Reconnaissance simple d'une correction par la voix:
+        "stop, tu ne m'as pas compris, je voulais dire ..."
+        """
+        normalized = text.strip()
+        if not normalized.lower().startswith(("stop", "stopp", "top")):
+            return ""
+        patterns = [
+            r"je\s+voulais\s+dire\s+(.+)$",
+            r"il\s+fallait\s+dire\s+(.+)$",
+            r"je\s+disais\s+(.+)$",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if match:
+                return match.group(1).strip(" .,:;!?")
+        return ""
 
     def _on_inject(self, text: str):
         try:

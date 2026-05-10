@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 APP_NAME = "VoixClaire"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.3.0"
 
 # Determiner le repertoire de donnees:
 # - Mode portable (cle USB): les donnees sont DANS le dossier de l'app
@@ -80,7 +80,7 @@ GITHUB_REPO = "https://github.com/bouyous/voixclaire-corrections.git"
 
 # Valeurs par defaut
 DEFAULTS = {
-    "whisper_model": "small",
+    "whisper_model": "medium",
     "language": "fr",
     "sample_rate": 16000,
     "channels": 1,
@@ -89,7 +89,7 @@ DEFAULTS = {
     "overlay_timeout": 5,
     "confidence_threshold": 0.6,
     "device_index": None,
-    "beam_size": 3,
+    "beam_size": 5,
     "compute_type": "int8",
     "user_name": "",
     "bar_position": "top",

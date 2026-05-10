@@ -13,7 +13,9 @@ VoixClaire est un logiciel de dictee vocale qui **apprend** a comprendre la voix
 5. Le texte reconnu apparait dans une bulle. On peut le corriger si besoin
 6. Le texte est ecrit automatiquement dans la fenetre active (Word, navigateur, etc.)
 
-**L'apprentissage** : si le logiciel comprend "fuit" au lieu de "oui", on corrige dans la bulle. La prochaine fois, il saura que cette prononciation signifie "oui".
+**L'apprentissage** : si le logiciel comprend "fuit" au lieu de "oui", on corrige dans la bulle. VoixClaire apprend la correction, mais les petits mots ambigus comme "je", "tu", "jeu" ne sont appliques automatiquement qu'apres plusieurs confirmations pour eviter les remplacements en boucle.
+
+**Correction vocale** : apres une mauvaise transcription, on peut aussi redicter une correction en disant par exemple : "stop, tu ne m'as pas compris, je voulais dire ...".
 
 ## Installation portable (sans droits admin)
 
@@ -27,6 +29,16 @@ Sur un PC ou vous avez les droits (maison par exemple) :
 2. Ouvrir un terminal dans le dossier du projet
 3. Lancer `build_portable.bat`
 4. Le dossier `VoixClaire_Portable` est cree (~2-3 Go)
+
+### Creer un .exe
+
+Pour generer un executable Windows direct :
+
+1. Ouvrir un terminal dans le dossier du projet
+2. Lancer `build_release.bat`
+3. Recuperer `dist\VoixClaire.exe`
+
+Le modele vocal par defaut est maintenant `medium` pour privilegier la comprehension. Le premier lancement peut donc telecharger un modele plus gros.
 
 ### Utiliser sur un PC (college, maison, etc.)
 
